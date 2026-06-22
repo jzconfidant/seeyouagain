@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio — 前端作品集</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='6' width='24' height='24' rx='3' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Crect x='34' y='6' width='24' height='24' rx='3' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Crect x='6' y='34' width='24' height='24' rx='3' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Crect x='34' y='34' width='24' height='24' rx='3' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #0a0a0a; color: #fff; font-family: -apple-system, 'Segoe UI', 'Noto Sans SC', sans-serif; overflow-x: hidden; }
+
+#bg-canvas {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+}
+
+.container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+/* Hero */
+#hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 80px 24px; }
+#hero h1 {
+  font-size: clamp(40px, 8vw, 80px); font-weight: 800; letter-spacing: 6px;
+  background: linear-gradient(135deg, #fff 0%, #888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 16px; opacity: 0; transform: translateY(30px); animation: fadeUp 0.8s ease forwards;
+}
+#hero .subtitle {
+  font-size: 16px; color: rgba(255,255,255,0.4); letter-spacing: 8px; text-transform: uppercase;
+  margin-bottom: 40px; opacity: 0; transform: translateY(30px); animation: fadeUp 0.8s ease 0.2s forwards;
+}
+#hero .desc {
+  max-width: 600px; font-size: 15px; line-height: 1.8; color: rgba(255,255,255,0.5);
+  margin-bottom: 48px; opacity: 0; transform: translateY(30px); animation: fadeUp 0.8s ease 0.4s forwards;
+}
+#hero .scroll-hint {
+  position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; color: rgba(255,255,255,0.2); letter-spacing: 4px;
+  animation: bounce 2s ease infinite; opacity: 0; animation: fadeUp 0.8s ease 0.8s forwards, bounce 2s ease infinite 1.2s;
+}
+@keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+@keyframes bounce { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-10px); } }
+
+/* Projects */
+#projects { padding: 80px 0 120px; }
+#projects h2 {
+  font-size: 28px; font-weight: 600; letter-spacing: 4px; margin-bottom: 60px; text-align: center;
+  color: rgba(255,255,255,0.8);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 24px;
+}
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+.card {
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px; overflow: hidden; cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  position: relative; text-decoration: none; color: inherit; display: block;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  border-color: rgba(255,255,255,0.15);
+}
+.card .thumb {
+  width: 100%; height: 180px; background: #151515;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.card .thumb .icon {
+  font-size: 48px; opacity: 0.3; transition: opacity 0.3s, transform 0.3s;
+}
+.card:hover .thumb .icon { opacity: 0.6; transform: scale(1.1); }
+.card .thumb .overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.3s;
+}
+.card:hover .thumb .overlay { opacity: 1; }
+.card .thumb .overlay span {
+  font-size: 13px; color: #fff; letter-spacing: 2px; padding: 8px 20px;
+  border: 1px solid rgba(255,255,255,0.3); border-radius: 20px;
+}
+.card .info { padding: 20px 24px; }
+.card .info h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; letter-spacing: 1px; }
+.card .info p { font-size: 13px; color: rgba(255,255,255,0.4); line-height: 1.6; }
+.card .info .tags { margin-top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+.card .info .tag {
+  font-size: 11px; color: rgba(255,255,255,0.3); padding: 3px 10px;
+  border-radius: 4px; background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Footer */
+footer {
+  padding: 40px 24px; text-align: center; border-top: 1px solid rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.2); font-size: 12px; letter-spacing: 2px;
+}
+
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<div class="container">
+  <section id="hero">
+    <h1>PORTFOLIO</h1>
+    <div class="subtitle">前端交互实验</div>
+    <div class="desc">
+      一组用纯原生 HTML / CSS / JavaScript 构建的交互式网页小工具。<br>
+      零框架、零依赖，开箱即用，无需安装任何插件。
+    </div>
+    <div class="scroll-hint">SCROLL DOWN ↓</div>
+  </section>
+
+  <section id="projects">
+    <h2>PROJECTS</h2>
+    <div class="grid">
+
+      <a class="card" href="typing-practice/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">⌨️</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Typing Practice</h3>
+          <p>英文打字练习工具，实时计算 WPM 与准确率，支持三级难度切换，翻页字符视觉反馈。</p>
+          <div class="tags"><span class="tag">HTML</span><span class="tag">CSS</span><span class="tag">JavaScript</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="flip-clock/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🕰️</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Flip Clock</h3>
+          <p>翻页时钟，实时天气展示，整点自动切换互联网 4K 背景图，支持按类型筛选图片。</p>
+          <div class="tags"><span class="tag">CSS 3D</span><span class="tag">API</span><span class="tag">Responsive</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="void/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🌌</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Void</h3>
+          <p>深夜星空发呆程序。120 颗粒子、鼠标拖尾涟漪、流星（1-3 分钟/颗）、Z 键禅模式。</p>
+          <div class="tags"><span class="tag">Canvas</span><span class="tag">粒子系统</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="aquazen/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🐟</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>AquaZen</h3>
+          <p>数字鱼缸。12 条鱼自主游弋、点击投食、水草气泡、D 键昼夜切换，物理碰撞模拟。</p>
+          <div class="tags"><span class="tag">Canvas</span><span class="tag">物理引擎</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="raintype/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🌧️</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>RainType</h3>
+          <p>雨滴打字游戏。6 首雨主题诗句，按键击碎雨滴收集，沉浸式雨声氛围。</p>
+          <div class="tags"><span class="tag">Canvas</span><span class="tag">游戏</span><span class="tag">诗词</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="photowall/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🖼️</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>PhotoWall</h3>
+          <p>无尽照片瀑布流。自适应列数、无限滚动、图片懒加载、Lightbox 查看，严丝合缝铺满。</p>
+          <div class="tags"><span class="tag">瀑布流</span><span class="tag">无限滚动</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="music-visualizer/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🎵</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Music Visualizer</h3>
+          <p>音乐可视化器。Web Audio API 频谱分析，拖拽音频/麦克风实时输入，4 种可视化模式。</p>
+          <div class="tags"><span class="tag">Web Audio</span><span class="tag">FFT</span><span class="tag">Canvas</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="voxel-engine/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🧊</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Voxel Engine</h3>
+          <p>WebGL 体素世界引擎。3D Perlin 噪声地形生成、第一人称相机、射线求交、物理碰撞、面剔除网格。</p>
+          <div class="tags"><span class="tag">WebGL</span><span class="tag">3D 数学</span><span class="tag">物理引擎</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="typedrift/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🌀</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>TypeDrift</h3>
+          <p>字体漂移实验室。每个汉字按部首赋予物理性格——水轻飘、火碰撞发光、石沉重、风易散。鼠标产生风力，点击引爆。</p>
+          <div class="tags"><span class="tag">物理引擎</span><span class="tag">生成艺术</span><span class="tag">汉字语义</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="stack-tower/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🏗️</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Stack Tower</h3>
+          <p>经典堆叠塔游戏。方块左右移动，点击放置，不对齐部分被切掉。完美放置触发连击，色彩逐层渐变。</p>
+          <div class="tags"><span class="tag">Canvas</span><span class="tag">节奏</span><span class="tag">反应</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="color-flood/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🎨</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Color Flood</h3>
+          <p>颜色淹没策略游戏。10×10 网格，点击颜色扩散连通区域，25 步内填满整个网格，步数越少评级越高。</p>
+          <div class="tags"><span class="tag">策略</span><span class="tag">BFS</span><span class="tag">益智</span></div>
+        </div>
+      </a>
+
+      <a class="card" href="falling-sand/index.html" target="_blank">
+        <div class="thumb">
+          <div class="icon">🏖️</div>
+          <div class="overlay"><span>OPEN →</span></div>
+        </div>
+        <div class="info">
+          <h3>Falling Sand</h3>
+          <p>像素物理沙盒。5 种材料（沙子/水/石头/火/植物），每种材料遵循独立物理规则：重力、流动、燃烧、生长。</p>
+          <div class="tags"><span class="tag">元胞自动机</span><span class="tag">物理模拟</span><span class="tag">像素</span></div>
+        </div>
+      </a>
+
+    </div>
+  </section>
+
+  <footer>© 2026 FRONTEND PORTFOLIO — 12 PROJECTS & COUNTING</footer>
+</div>
+
+<script>
+// ===================== BACKGROUND PARTICLES =====================
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [];
+const COUNT = 80, CONNECT_DIST = 120;
+
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+class Particle {
+  constructor() {
+    this.x = Math.random() * W; this.y = Math.random() * H;
+    this.vx = (Math.random() - 0.5) * 0.3; this.vy = (Math.random() - 0.5) * 0.3;
+    this.r = Math.random() * 1.5 + 0.5; this.alpha = Math.random() * 0.4 + 0.1;
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    if (this.x < 0 || this.x > W) this.vx *= -1;
+    if (this.y < 0 || this.y > H) this.vy *= -1;
+  }
+  draw() {
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${this.alpha})`; ctx.fill();
+  }
+}
+for (let i = 0; i < COUNT; i++) particles.push(new Particle());
+
+(function draw() {
+  ctx.clearRect(0, 0, W, H);
+  for (const p of particles) { p.update(); p.draw(); }
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const dx = particles[i].x - particles[j].x, dy = particles[i].y - particles[j].y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d < CONNECT_DIST) {
+        ctx.beginPath(); ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(255,255,255,${0.08 * (1 - d/CONNECT_DIST)})`; ctx.lineWidth = 0.5; ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

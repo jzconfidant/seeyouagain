@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Color Flood — 颜色淹没</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23ff6b6b'/%3E%3Ccircle cx='48' cy='16' r='12' fill='%234ecdc4'/%3E%3Ccircle cx='16' cy='48' r='12' fill='%23ffe66d'/%3E%3Ccircle cx='48' cy='48' r='12' fill='%2395e1d3'/%3E%3C/svg%3E">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #0a0a0a; color: #fff; font-family: -apple-system, 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+#header { text-align: center; margin-bottom: 24px; }
+#header h1 { font-size: 20px; font-weight: 600; letter-spacing: 4px; color: rgba(255,255,255,0.7); }
+#header .info { font-size: 13px; color: rgba(255,255,255,0.3); margin-top: 8px; letter-spacing: 1px; }
+#header .info span { color: rgba(255,255,255,0.6); }
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  width: min(90vw, 400px); height: min(90vw, 400px);
+  background: rgba(255,255,255,0.03); padding: 6px; border-radius: 8px;
+}
+.cell {
+  border-radius: 3px; transition: background-color 0.3s ease;
+  cursor: default;
+}
+
+#controls {
+  display: flex; gap: 10px; margin-top: 24px; align-items: center;
+}
+.color-btn {
+  width: 48px; height: 48px; border-radius: 12px; border: 2px solid transparent;
+  cursor: pointer; transition: all 0.15s; position: relative;
+}
+.color-btn:hover { transform: scale(1.1); border-color: rgba(255,255,255,0.4); }
+.color-btn:disabled { opacity: 0.15; cursor: not-allowed; transform: none; }
+.color-btn .check {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: rgba(255,255,255,0.8); opacity: 0; transition: opacity 0.2s;
+}
+.color-btn.active .check { opacity: 1; }
+
+#result {
+  position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+}
+#result.show { display: flex; }
+#result h2 { font-size: 32px; font-weight: 700; letter-spacing: 4px; margin-bottom: 8px; }
+#result .detail { font-size: 16px; color: rgba(255,255,255,0.5); margin-bottom: 32px; }
+#result .btn {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; padding: 12px 36px; border-radius: 8px; font-size: 14px;
+  letter-spacing: 3px; cursor: pointer; transition: all 0.2s;
+}
+#result .btn:hover { background: rgba(255,255,255,0.2); }
+#new-game {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.5); padding: 8px 24px; border-radius: 6px; font-size: 12px;
+  letter-spacing: 2px; cursor: pointer; transition: all 0.2s; margin-top: 8px;
+}
+#new-game:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>COLOR FLOOD</h1>
+  <div class="info">步数: <span id="steps">0</span> / <span id="max">25</span> | 最佳: <span id="best">—</span></div>
+</div>
+<div id="grid"></div>
+<div id="controls"></div>
+<button id="new-game">新游戏</button>
+
+<div id="result">
+  <h2 id="result-title">WIN!</h2>
+  <div class="detail" id="result-detail">用了 18 步</div>
+  <button class="btn" id="again">再来一局</button>
+</div>
+
+<script>
+const SIZE = 10;
+const COLORS = [
+  { bg: '#ff6b6b', name: 'red' },
+  { bg: '#4ecdc4', name: 'teal' },
+  { bg: '#ffe66d', name: 'yellow' },
+  { bg: '#95e1d3', name: 'mint' },
+  { bg: '#a8a8a8', name: 'gray' },
+  { bg: '#f38181', name: 'pink' }
+];
+const MAX_STEPS = 25;
+
+let grid = [], steps = 0, best = parseInt(localStorage.getItem('flood-best') || '0') || null;
+let currentColor = 0;
+
+const gridEl = document.getElementById('grid');
+const controlsEl = document.getElementById('controls');
+const stepsEl = document.getElementById('steps');
+const maxEl = document.getElementById('max');
+const bestEl = document.getElementById('best');
+const resultEl = document.getElementById('result');
+
+if (best) bestEl.textContent = best;
+maxEl.textContent = MAX_STEPS;
+
+function init() {
+  grid = [];
+  steps = 0;
+  stepsEl.textContent = '0';
+  resultEl.classList.remove('show');
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    grid.push(Math.floor(Math.random() * COLORS.length));
+  }
+  // ensure first cell not same as neighbors to make it playable
+  const first = grid[0];
+  while (grid[1] === first && grid[SIZE] === first) {
+    grid[1] = Math.floor(Math.random() * COLORS.length);
+    grid[SIZE] = Math.floor(Math.random() * COLORS.length);
+  }
+  currentColor = grid[0];
+  renderGrid();
+  renderControls();
+  updateDisabled();
+}
+
+function renderGrid() {
+  gridEl.innerHTML = '';
+  for (let i = 0; i < grid.length; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.style.backgroundColor = COLORS[grid[i]].bg;
+    gridEl.appendChild(cell);
+  }
+}
+
+function renderControls() {
+  controlsEl.innerHTML = '';
+  for (let i = 0; i < COLORS.length; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'color-btn';
+    btn.style.backgroundColor = COLORS[i].bg;
+    btn.innerHTML = '<span class="check">✓</span>';
+    btn.addEventListener('click', () => flood(i));
+    controlsEl.appendChild(btn);
+  }
+}
+
+function updateDisabled() {
+  const btns = controlsEl.querySelectorAll('.color-btn');
+  btns.forEach((btn, i) => {
+    btn.disabled = i === currentColor;
+    btn.classList.toggle('active', i === currentColor);
+  });
+}
+
+function flood(colorIdx) {
+  if (colorIdx === currentColor) return;
+  if (steps >= MAX_STEPS) return;
+
+  const oldColor = currentColor;
+  currentColor = colorIdx;
+  steps++;
+  stepsEl.textContent = steps;
+
+  // BFS from top-left
+  const visited = new Set([0]);
+  const queue = [0];
+  const newColor = colorIdx;
+
+  while (queue.length) {
+    const idx = queue.shift();
+    grid[idx] = newColor;
+    const x = idx % SIZE, y = Math.floor(idx / SIZE);
+    const neighbors = [];
+    if (x > 0) neighbors.push(idx - 1);
+    if (x < SIZE - 1) neighbors.push(idx + 1);
+    if (y > 0) neighbors.push(idx - SIZE);
+    if (y < SIZE - 1) neighbors.push(idx + SIZE);
+
+    for (const n of neighbors) {
+      if (!visited.has(n) && (grid[n] === oldColor || grid[n] === newColor)) {
+        visited.add(n);
+        queue.push(n);
+      }
+    }
+  }
+
+  renderGrid();
+  updateDisabled();
+  checkWin();
+}
+
+function checkWin() {
+  const first = grid[0];
+  const filled = grid.every(c => c === first);
+  if (filled) {
+    const isBest = !best || steps < best;
+    if (isBest) { best = steps; localStorage.setItem('flood-best', best); bestEl.textContent = best; }
+    document.getElementById('result-title').textContent = 'WIN!';
+    document.getElementById('result-detail').textContent = `用了 ${steps} 步${isBest ? ' (新纪录!)' : ''}`;
+    resultEl.classList.add('show');
+  } else if (steps >= MAX_STEPS) {
+    document.getElementById('result-title').textContent = 'GAME OVER';
+    document.getElementById('result-detail').textContent = `还剩 ${grid.filter(c => c !== first).length} 格未填满`;
+    resultEl.classList.add('show');
+  }
+}
+
+document.getElementById('new-game').addEventListener('click', init);
+document.getElementById('again').addEventListener('click', init);
+
+init();
+</script>
+</body>
+</html>

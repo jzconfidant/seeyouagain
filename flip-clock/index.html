@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flip Clock - 沉浸式翻页时钟</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='15' y='10' width='70' height='40' rx='6' fill='%2360a5fa' opacity='0.3'/%3E%3Crect x='15' y='50' width='70' height='40' rx='6' fill='%2360a5fa'/%3E%3Ctext x='50' y='40' text-anchor='middle' font-size='28' font-family='Arial, sans-serif' font-weight='bold' fill='%2360a5fa'%3E08%3C/text%3E%3Ctext x='50' y='80' text-anchor='middle' font-size='28' font-family='Arial, sans-serif' font-weight='bold' fill='%230f172a'%3E15%3C/text%3E%3Cline x1='15' y1='50' x2='85' y2='50' stroke='%230f172a' stroke-width='3'/%3E%3C/svg%3E">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        /* ========== Background Layers ========== */
+        .bg-layer {
+            position: fixed;
+            inset: 0;
+            background-position: center;
+            background-size: cover;
+            background-repeat: no-repeat;
+            z-index: -2;
+            transition: opacity 1.5s ease-in-out, transform 8s ease-out;
+            will-change: transform, opacity;
+            transform: translateZ(0) scale(1);
+        }
+        .bg-layer.active {
+            opacity: 1;
+            transform: translateZ(0) scale(1.05);
+        }
+        .bg-layer.inactive {
+            opacity: 0;
+            transform: translateZ(0) scale(1);
+        }
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(6, 6, 20, 0.5);
+            z-index: -1;
+            transition: background 1.5s ease;
+        }
+
+        /* ========== Glass Clock Card ========== */
+        .clock-card {
+            background: rgba(16, 16, 32, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: 28px;
+            padding: 48px 56px;
+            box-shadow: 0 32px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+            text-align: center;
+            user-select: none;
+            transition: transform 0.4s ease, box-shadow 0.4s ease;
+            z-index: 2;
+        }
+        .clock-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08);
+        }
+
+        .greeting {
+            font-size: 14px;
+            color: rgba(255,255,255,0.5);
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            margin-bottom: 32px;
+            font-weight: 400;
+        }
+
+        /* ========== Flip Clock Layout ========== */
+        .flip-clock {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            justify-content: center;
+        }
+        .flip-group {
+            display: flex;
+            gap: 6px;
+        }
+
+        /* ========== Flip Unit (Optimized 3D) ========== */
+        .flip-unit {
+            position: relative;
+            width: 92px;
+            height: 136px;
+            background: #1a1a32;
+            border-radius: 14px;
+            font-size: 80px;
+            font-weight: 700;
+            color: #fff;
+            perspective: 600px;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+            overflow: hidden;
+            will-change: transform;
+            transform: translateZ(0);
+        }
+        .flip-unit::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background: rgba(0,0,0,0.4);
+            z-index: 20;
+            transform: translateY(-50%);
+        }
+
+        /* Static halves */
+        .flip-unit .top, .flip-unit .bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            overflow: hidden;
+            background: linear-gradient(180deg, #2e2e52 0%, #222240 100%);
+            display: flex;
+            justify-content: center;
+            backface-visibility: hidden;
+            border-radius: 14px;
+        }
+        .flip-unit .top {
+            top: 0;
+            border-radius: 14px 14px 0 0;
+            transform-origin: bottom;
+            align-items: flex-end;
+        }
+        .flip-unit .top span {
+            display: block;
+            transform: translateY(50%);
+        }
+        .flip-unit .bottom {
+            bottom: 0;
+            border-radius: 0 0 14px 14px;
+            transform-origin: top;
+            align-items: flex-start;
+        }
+        .flip-unit .bottom span {
+            display: block;
+            transform: translateY(-50%);
+        }
+
+        /* Animation overlays — use animation, not transition */
+        .flip-unit .flip-top, .flip-unit .flip-bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            overflow: hidden;
+            background: linear-gradient(180deg, #2e2e52 0%, #222240 100%);
+            display: flex;
+            justify-content: center;
+            backface-visibility: hidden;
+            border-radius: 14px;
+            z-index: 15;
+            will-change: transform;
+            transform: translateZ(0);
+        }
+        .flip-unit .flip-top {
+            top: 0;
+            border-radius: 14px 14px 0 0;
+            transform-origin: bottom;
+            align-items: flex-end;
+            transform: translateZ(0) rotateX(-90deg);
+        }
+        .flip-unit .flip-top span {
+            display: block;
+            transform: translateY(50%);
+        }
+        .flip-unit .flip-bottom {
+            bottom: 0;
+            border-radius: 0 0 14px 14px;
+            transform-origin: top;
+            align-items: flex-start;
+            transform: translateZ(0) rotateX(0deg);
+        }
+        .flip-unit .flip-bottom span {
+            display: block;
+            transform: translateY(-50%);
+        }
+
+        @keyframes flipTopDown {
+            from { transform: translateZ(0) rotateX(-90deg); }
+            to   { transform: translateZ(0) rotateX(0deg); }
+        }
+        @keyframes flipBottomUp {
+            from { transform: translateZ(0) rotateX(0deg); }
+            to   { transform: translateZ(0) rotateX(90deg); }
+        }
+
+        .flip-unit.flipping .flip-top {
+            animation: flipTopDown 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        .flip-unit.flipping .flip-bottom {
+            animation: flipBottomUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        /* Seconds accent */
+        .seconds-group .flip-unit {
+            background: #0e1528;
+            color: #60a5fa;
+        }
+        .seconds-group .flip-unit .top, .seconds-group .flip-unit .bottom,
+        .seconds-group .flip-unit .flip-top, .seconds-group .flip-unit .flip-bottom {
+            background: linear-gradient(180deg, #1e2e52 0%, #162040 100%);
+        }
+
+        /* Separator */
+        .separator {
+            font-size: 48px;
+            font-weight: 200;
+            color: rgba(255,255,255,0.6);
+            animation: sepBlink 2s ease-in-out infinite;
+            line-height: 136px;
+            padding: 0 2px;
+        }
+        @keyframes sepBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.15; }
+        }
+
+        /* Date & Weather Info */
+        .date-info {
+            margin-top: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+        .date-line {
+            font-size: 14px;
+            color: rgba(255,255,255,0.4);
+            letter-spacing: 3px;
+            font-weight: 300;
+        }
+        .weekday {
+            font-size: 18px;
+            color: rgba(255,255,255,0.7);
+            font-weight: 500;
+            letter-spacing: 2px;
+        }
+        .weather-inline {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: rgba(255,255,255,0.55);
+            margin-top: 4px;
+            flex-wrap: wrap;
+            justify-content: center;
+            line-height: 1.6;
+        }
+        .weather-inline .w-icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+        .weather-inline .w-temp {
+            font-weight: 600;
+            color: rgba(255,255,255,0.7);
+        }
+        .weather-inline .w-dot {
+            color: rgba(255,255,255,0.25);
+            font-size: 10px;
+            margin: 0 -2px;
+        }
+        .weather-inline .w-loading {
+            color: rgba(255,255,255,0.35);
+            font-size: 12px;
+        }
+        .weather-inline .w-error {
+            color: rgba(248, 113, 113, 0.7);
+            font-size: 12px;
+        }
+
+        /* ========== Background Controls ========== */
+        .bg-control-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 44px;
+            height: 44px;
+            background: rgba(20, 20, 40, 0.6);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 50%;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            z-index: 10;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        .bg-control-btn:hover {
+            background: rgba(40, 40, 70, 0.8);
+            color: #fff;
+            transform: scale(1.1);
+        }
+
+        .bg-panel {
+            position: fixed;
+            bottom: 80px;
+            right: 24px;
+            width: 280px;
+            background: rgba(20, 20, 40, 0.75);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 18px;
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            padding: 20px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10;
+        }
+        .bg-panel.open {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+        .bg-panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.8);
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .bg-panel-close {
+            font-size: 18px;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        .bg-panel-close:hover { color: #fff; }
+        .bg-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .bg-item-label {
+            font-size: 12px;
+            color: rgba(255,255,255,0.6);
+            min-width: 60px;
+        }
+        .bg-item-value {
+            font-size: 13px;
+            color: rgba(255,255,255,0.9);
+            flex: 1;
+        }
+        .bg-slider {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.15);
+            outline: none;
+            -webkit-appearance: none;
+            margin: 4px 0;
+        }
+        .bg-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #60a5fa;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(96, 165, 250, 0.4);
+            transition: transform 0.2s;
+        }
+        .bg-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        .bg-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #60a5fa;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(96, 165, 250, 0.4);
+        }
+        .bg-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+        }
+        .bg-action-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.8);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .bg-action-btn:hover {
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.25);
+        }
+        .bg-action-btn.primary {
+            background: rgba(96, 165, 250, 0.2);
+            border-color: rgba(96, 165, 250, 0.4);
+            color: #60a5fa;
+        }
+        .bg-action-btn.primary:hover {
+            background: rgba(96, 165, 250, 0.3);
+        }
+        .bg-name {
+            font-size: 12px;
+            color: rgba(255,255,255,0.4);
+            margin-top: 4px;
+            text-align: center;
+        }
+        .bg-type-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .bg-type-btn {
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.6);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            flex: 1;
+            min-width: 40px;
+        }
+        .bg-type-btn:hover {
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.25);
+            color: rgba(255,255,255,0.9);
+        }
+        .bg-type-btn.active {
+            background: rgba(96, 165, 250, 0.25);
+            border-color: rgba(96, 165, 250, 0.5);
+            color: #60a5fa;
+            font-weight: 500;
+        }
+        .bg-source-info {
+            font-size: 11px;
+            color: rgba(255,255,255,0.35);
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        /* ========== Responsive ========== */
+        @media (max-width: 768px) {
+            .clock-card { padding: 28px 20px; border-radius: 20px; }
+            .flip-unit { width: 56px; height: 84px; font-size: 48px; border-radius: 10px; }
+            .flip-unit .top, .flip-unit .bottom, .flip-unit .flip-top, .flip-unit .flip-bottom {
+                border-radius: 10px;
+            }
+            .flip-unit .top, .flip-unit .flip-top { border-radius: 10px 10px 0 0; }
+            .flip-unit .bottom, .flip-unit .flip-bottom { border-radius: 0 0 10px 10px; }
+            .separator { font-size: 32px; line-height: 84px; }
+            .flip-clock { gap: 6px; }
+            .flip-group { gap: 3px; }
+            .greeting { font-size: 12px; letter-spacing: 3px; }
+            .weather-inline { font-size: 12px; gap: 6px; }
+            .weather-inline .w-icon { font-size: 16px; }
+            .bg-panel { width: calc(100vw - 48px); right: 12px; bottom: 70px; }
+            .bg-control-btn { bottom: 12px; right: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Background Layers -->
+    <div class="bg-layer active" id="bg-layer-1"></div>
+    <div class="bg-layer inactive" id="bg-layer-2"></div>
+    <div class="bg-overlay" id="bg-overlay"></div>
+
+    <!-- Clock Card -->
+    <div class="clock-card">
+        <div class="greeting" id="greeting">晚安</div>
+
+        <div class="flip-clock">
+            <div class="flip-group" id="hours-group">
+                <div class="flip-unit" data-pos="h1">
+                    <div class="top"><span>0</span></div>
+                    <div class="bottom"><span>0</span></div>
+                    <div class="flip-top"><span>0</span></div>
+                    <div class="flip-bottom"><span>0</span></div>
+                </div>
+                <div class="flip-unit" data-pos="h2">
+                    <div class="top"><span>0</span></div>
+                    <div class="bottom"><span>0</span></div>
+                    <div class="flip-top"><span>0</span></div>
+                    <div class="flip-bottom"><span>0</span></div>
+                </div>
+            </div>
+
+            <div class="separator">:</div>
+
+            <div class="flip-group" id="minutes-group">
+                <div class="flip-unit" data-pos="m1">
+                    <div class="top"><span>0</span></div>
+                    <div class="bottom"><span>0</span></div>
+                    <div class="flip-top"><span>0</span></div>
+                    <div class="flip-bottom"><span>0</span></div>
+                </div>
+                <div class="flip-unit" data-pos="m2">
+                    <div class="top"><span>0</span></div>
+                    <div class="bottom"><span>0</span></div>
+                    <div class="flip-top"><span>0</span></div>
+                    <div class="flip-bottom"><span>0</span></div>
+                </div>
+            </div>
+
+            <div class="separator">:</div>
+
+            <div class="flip-group seconds-group" id="seconds-group">
+                <div class="flip-unit" data-pos="s1">
+                    <div class="top"><span>0</span></div>
+                    <div class="bottom"><span>0</span></div>
+                    <div class="flip-top"><span>0</span></div>
+                    <div class="flip-bottom"><span>0</span></div>
+                </div>
+                <div class="flip-unit" data-pos="s2">
+                    <div class="top"><span>0</span></div>
+                    <div class="bottom"><span>0</span></div>
+                    <div class="flip-top"><span>0</span></div>
+                    <div class="flip-bottom"><span>0</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="date-info">
+            <div class="date-line" id="date-line">2024年1月1日</div>
+            <div class="weekday" id="weekday">星期一</div>
+            <div class="weather-inline" id="weather-inline">
+                <span class="w-loading" id="weather-loading">正在获取天气...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Controls -->
+    <button class="bg-control-btn" id="bg-control-btn" title="背景设置">⚙️</button>
+    <div class="bg-panel" id="bg-panel">
+        <div class="bg-panel-title">
+            <span>背景设置</span>
+            <span class="bg-panel-close" id="bg-panel-close">✕</span>
+        </div>
+        <div class="bg-type-row" id="bg-type-row">
+            <button class="bg-type-btn active" data-type="landscape">风景</button>
+            <button class="bg-type-btn" data-type="car">汽车</button>
+            <button class="bg-type-btn" data-type="woman">美女</button>
+            <button class="bg-type-btn" data-type="man">帅哥</button>
+            <button class="bg-type-btn" data-type="random">随机</button>
+        </div>
+        <div class="bg-item">
+            <span class="bg-item-label">当前</span>
+            <span class="bg-item-value" id="bg-current-name">风景</span>
+        </div>
+        <div class="bg-item">
+            <span class="bg-item-label">切换间隔</span>
+            <span class="bg-item-value" id="bg-interval-val">5 分钟</span>
+        </div>
+        <div style="padding: 0 4px;">
+            <input type="range" class="bg-slider" id="bg-interval-slider" min="1" max="30" value="5" step="1">
+        </div>
+        <div class="bg-name" id="bg-next-name">下一张: 自动获取</div>
+        <div class="bg-actions">
+            <button class="bg-action-btn" id="bg-prev-btn">⏮ 上一张</button>
+            <button class="bg-action-btn primary" id="bg-next-btn">⏭ 下一张</button>
+        </div>
+        <div class="bg-source-info" id="bg-source-info">来源: Picsum</div>
+    </div>
+
+    <script>
+    // ==================== CONFIG ====================
+    const weatherIcons = {
+        0: { icon: '☀️', desc: '晴朗' },
+        1: { icon: '🌤️', desc: ' mostly clear' },
+        2: { icon: '⛅', desc: '多云' },
+        3: { icon: '☁️', desc: '阴天' },
+        45: { icon: '🌫️', desc: '雾' },
+        48: { icon: '🌫️', desc: '雾凇' },
+        51: { icon: '🌦️', desc: '毛毛雨' },
+        53: { icon: '🌦️', desc: '小雨' },
+        55: { icon: '🌧️', desc: '中雨' },
+        61: { icon: '🌧️', desc: '小雨' },
+        63: { icon: '🌧️', desc: '中雨' },
+        65: { icon: '⛈️', desc: '大雨' },
+        71: { icon: '🌨️', desc: '小雪' },
+        73: { icon: '🌨️', desc: '中雪' },
+        75: { icon: '❄️', desc: '大雪' },
+        77: { icon: '🌨️', desc: '雪粒' },
+        80: { icon: '🌦️', desc: '阵雨' },
+        81: { icon: '🌧️', desc: '中阵雨' },
+        82: { icon: '⛈️', desc: '强阵雨' },
+        85: { icon: '🌨️', desc: '阵雪' },
+        86: { icon: '❄️', desc: '强阵雪' },
+        95: { icon: '⚡', desc: '雷雨' },
+        96: { icon: '⛈️', desc: '雷暴' },
+        99: { icon: '⛈️', desc: '强雷暴' }
+    };
+
+    // ==================== STATE ====================
+    let currentBgType = 'landscape';
+    let bgImageList = [];
+    let bgImageIndex = 0;
+    let bgIntervalMin = 5;
+    let lastBgSwitchMinute = -1;
+    let isBgPanelOpen = false;
+    let lat = null, lon = null, cityName = '未知位置';
+    let weatherData = null;
+    let lastWeatherUpdate = 0;
+    let nextBgIndex = 0;
+    let preloaded = {};
+    let isFetchingBg = false;
+    let picsumOffset = 0; // 每种类型用不同的 Picsum 页码
+
+    // ==================== INDEXEDDB CACHE ====================
+    const DB_NAME = 'flipClockCache';
+    const DB_VERSION = 1;
+    const STORE_URLS = 'bgUrls';
+
+    function openCacheDB() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_URLS)) {
+                    db.createObjectStore(STORE_URLS, { keyPath: 'type' });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    async function getCachedUrls(type) {
+        try {
+            const db = await openCacheDB();
+            return new Promise((resolve) => {
+                const tx = db.transaction(STORE_URLS, 'readonly');
+                const store = tx.objectStore(STORE_URLS);
+                const req = store.get(type);
+                req.onsuccess = () => {
+                    const data = req.result;
+                    if (data && (Date.now() - data.timestamp) < 24 * 60 * 60 * 1000) {
+                        resolve(data.urls);
+                    } else {
+                        resolve(null);
+                    }
+                };
+                req.onerror = () => resolve(null);
+            });
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function setCachedUrls(type, urls) {
+        try {
+            const db = await openCacheDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_URLS, 'readwrite');
+                const store = tx.objectStore(STORE_URLS);
+                const req = store.put({ type, urls, timestamp: Date.now() });
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        } catch (e) {
+            console.error('Cache save failed:', e);
+        }
+    }
+
+    // ==================== IMAGE SOURCE FETCH ====================
+    async function fetchPicsumList(page, limit) {
+        const url = `https://picsum.photos/v2/list?page=${page}&limit=${limit}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        return data.map(p => ({
+            url: `https://picsum.photos/id/${p.id}/3840/2160`,
+            name: p.author || '风景'
+        }));
+    }
+
+    async function fetchBgImages(type) {
+        // 1. 先检查 IndexedDB 缓存
+        const cached = await getCachedUrls(type);
+        if (cached) {
+            console.log('Cache hit for', type);
+            return cached;
+        }
+
+        let images = [];
+
+        if (type === 'landscape' || type === 'random') {
+            // 风景/随机：用 Picsum API（国内可访问，真实高质量风景图）
+            try {
+                const page = type === 'landscape' ? 1 : 3;
+                let images = await fetchPicsumList(page, 30);
+                if (images.length < 3) throw new Error('Not enough images');
+                // 去重 + 混洗
+                images = images.filter((img, idx, arr) =>
+                    arr.findIndex(i => i.url === img.url) === idx
+                );
+                for (let i = images.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [images[i], images[j]] = [images[j], images[i]];
+                }
+                images = images.slice(0, 20);
+            } catch (e) {
+                console.error('Picsum fetch failed:', e);
+                return null;
+            }
+        } else {
+            // 汽车/美女/帅哥：用 loremflickr.com（支持关键词分类，无需API Key）
+            // lock 参数确保返回固定图片，不同 lock 值返回不同图片
+            const kw = {
+                car: 'supercar',
+                woman: 'cute,girl,asian',
+                man: 'handsome,man,asian'
+            }[type];
+            if (!kw) return null;
+            for (let i = 1; i <= 20; i++) {
+                images.push({
+                    url: `https://loremflickr.com/3840/2160/${kw}?lock=${i}`,
+                    name: kw
+                });
+            }
+        }
+
+        // 存入缓存
+        if (images.length > 0) {
+            await setCachedUrls(type, images);
+        }
+        return images;
+    }
+
+    async function switchBgType(type) {
+        if (type === currentBgType && bgImageList.length > 0) return;
+        if (isFetchingBg) return;
+
+        currentBgType = type;
+        isFetchingBg = true;
+
+        const el = document.getElementById('bg-source-info');
+        el.textContent = '正在获取图片...';
+        el.style.color = 'rgba(96, 165, 250, 0.7)';
+
+        let images = await fetchBgImages(type);
+        if (!images || images.length < 3) {
+            images = generateFallbackImages(type);
+            el.textContent = '来源: 本地缓存';
+            el.style.color = '';
+        } else {
+            const sourceMap = {
+                landscape: 'Picsum Photos',
+                random: 'Picsum Photos',
+                car: 'LoremFlickr',
+                woman: 'LoremFlickr',
+                man: 'LoremFlickr'
+            };
+            el.textContent = '来源: ' + (sourceMap[type] || '网络');
+            el.style.color = '';
+        }
+
+        bgImageList = images;
+        bgImageIndex = 0;
+        isFetchingBg = false;
+
+        switchBackground(true);
+        updateBgPanelUI();
+    }
+
+    function generateFallbackImages(type) {
+        const fallbackMap = {
+            landscape: [
+                { url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=3840&q=85', name: '星空山脉' },
+                { url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?auto=format&fit=crop&w=3840&q=85', name: '极光之夜' },
+                { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=3840&q=85', name: '阿尔卑斯山' },
+                { url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=3840&q=85', name: '迷雾森林' },
+                { url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=3840&q=85', name: '热带海岸' },
+                { url: 'https://images.unsplash.com/photo-1518391846015-55a9cc003b25?auto=format&fit=crop&w=3840&q=85', name: '城市天际' },
+                { url: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=3840&q=85', name: '蔚蓝海洋' },
+                { url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=3840&q=85', name: '山湖倒影' },
+                { url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=3840&q=85', name: '雪山全景' },
+                { url: 'https://images.unsplash.com/photo-1542296332-2e44a996bb31?auto=format&fit=crop&w=3840&q=85', name: '大漠孤烟' }
+            ],
+            car: [
+                { url: 'https://images.unsplash.com/photo-1503376763036-066120622c74?auto=format&fit=crop&w=3840&q=85', name: '跑车' },
+                { url: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=3840&q=85', name: '经典车' },
+                { url: 'https://images.unsplash.com/photo-1552519507-da3b1425fb86?auto=format&fit=crop&w=3840&q=85', name: '肌肉车' },
+                { url: 'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?auto=format&fit=crop&w=3840&q=85', name: '豪车' },
+                { url: 'https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&w=3840&q=85', name: '公路' },
+                { url: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=3840&q=85', name: '新车' },
+                { url: 'https://images.unsplash.com/photo-1525609004556-c46c7d6cf023?auto=format&fit=crop&w=3840&q=85', name: '速度' },
+                { url: 'https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?auto=format&fit=crop&w=3840&q=85', name: '现代车' }
+            ],
+            woman: [
+                { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=3840&q=85', name: '人像' },
+                { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=3840&q=85', name: '微笑' },
+                { url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=3840&q=85', name: '时尚' },
+                { url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=3840&q=85', name: '优雅' },
+                { url: 'https://images.unsplash.com/photo-1488161628813-04466f872be2?auto=format&fit=crop&w=3840&q=85', name: '风采' }
+            ],
+            man: [
+                { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=3840&q=85', name: '人像' },
+                { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=3840&q=85', name: '微笑' },
+                { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=3840&q=85', name: '风格' },
+                { url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=3840&q=85', name: '商务' },
+                { url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=3840&q=85', name: '自然' }
+            ],
+            random: [
+                { url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=3840&q=85', name: '随机' }
+            ]
+        };
+        return fallbackMap[type] || fallbackMap.landscape;
+    }
+
+    // ==================== BACKGROUND SYSTEM ====================
+    const bgLayer1 = document.getElementById('bg-layer-1');
+    const bgLayer2 = document.getElementById('bg-layer-2');
+    let activeLayer = 1;
+
+    function preloadBgImage(url) {
+        if (!url || preloaded[url]) return;
+        const img = new Image();
+        img.src = url;
+        preloaded[url] = true;
+    }
+
+    function switchBackground(manual = false) {
+        if (bgImageList.length === 0) return;
+
+        if (!manual) {
+            bgImageIndex = (bgImageIndex + 1) % bgImageList.length;
+        }
+        nextBgIndex = (bgImageIndex + 1) % bgImageList.length;
+
+        const nextImg = bgImageList[bgImageIndex];
+        preloadBgImage(bgImageList[nextBgIndex]?.url);
+
+        const activeEl = activeLayer === 1 ? bgLayer1 : bgLayer2;
+        const inactiveEl = activeLayer === 1 ? bgLayer2 : bgLayer1;
+
+        inactiveEl.style.backgroundImage = `url(${nextImg.url})`;
+        activeEl.classList.remove('active');
+        activeEl.classList.add('inactive');
+        inactiveEl.classList.remove('inactive');
+        inactiveEl.classList.add('active');
+
+        activeLayer = activeLayer === 1 ? 2 : 1;
+        lastBgSwitchMinute = new Date().getHours() * 60 + new Date().getMinutes();
+        updateBgPanelUI();
+
+        fetchWeather();
+    }
+
+    function updateBgPanelUI() {
+        const typeNames = { landscape: '风景', car: '汽车', woman: '美女', man: '帅哥', random: '随机' };
+        const currentImg = bgImageList[bgImageIndex] || { name: '加载中' };
+        const nextImg = bgImageList[nextBgIndex] || { name: '自动获取' };
+        document.getElementById('bg-current-name').textContent = typeNames[currentBgType] + ' · ' + currentImg.name;
+        document.getElementById('bg-next-name').textContent = '下一张: ' + nextImg.name;
+        document.getElementById('bg-interval-val').textContent = bgIntervalMin + ' 分钟';
+    }
+
+    // ==================== WEATHER SYSTEM ====================
+    async function getLocation() {
+        if (navigator.geolocation) {
+            try {
+                const pos = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: 600000 });
+                });
+                lat = pos.coords.latitude;
+                lon = pos.coords.longitude;
+                try {
+                    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh`);
+                    const data = await res.json();
+                    cityName = data.city || data.locality || data.principalSubdivision || '当前位置';
+                } catch(e) {
+                    cityName = '当前位置';
+                }
+                return;
+            } catch (e) {
+                console.log('Browser geolocation failed, trying IP');
+            }
+        }
+        try {
+            const res = await fetch('https://ipapi.co/json/');
+            const data = await res.json();
+            lat = data.latitude;
+            lon = data.longitude;
+            cityName = data.city || '当前位置';
+        } catch (e) {
+            console.error('IP geolocation failed', e);
+            cityName = '定位失败';
+        }
+    }
+
+    async function fetchWeather() {
+        const now = Date.now();
+        if (!lat || !lon) {
+            await getLocation();
+        }
+        if (!lat || !lon) {
+            showWeatherError('无法获取位置信息');
+            return;
+        }
+        if (weatherData && (now - lastWeatherUpdate < 300000)) {
+            renderWeather();
+            return;
+        }
+        try {
+            const res = await fetch(
+                `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`
+            );
+            const data = await res.json();
+            weatherData = data.current;
+            lastWeatherUpdate = now;
+            renderWeather();
+        } catch (e) {
+            console.error('Weather fetch failed', e);
+            showWeatherError('天气获取失败');
+        }
+    }
+
+    function renderWeather() {
+        if (!weatherData) return;
+        const w = weatherIcons[weatherData.weather_code] || { icon: '☁️', desc: '多云' };
+        const el = document.getElementById('weather-inline');
+        el.innerHTML = `
+            <span class="w-icon">${w.icon}</span>
+            <span class="w-temp">${Math.round(weatherData.temperature_2m)}°C</span>
+            <span class="w-dot">·</span>
+            <span>${w.desc}</span>
+            <span class="w-dot">·</span>
+            <span>💧 ${weatherData.relative_humidity_2m}%</span>
+            <span class="w-dot">·</span>
+            <span>💨 ${Math.round(weatherData.wind_speed_10m)}km/h</span>
+            <span class="w-dot">·</span>
+            <span>📍 ${cityName}</span>
+        `;
+    }
+
+    function showWeatherError(msg) {
+        const el = document.getElementById('weather-inline');
+        el.innerHTML = `<span class="w-error">${msg}</span>`;
+    }
+
+    // ==================== FLIP CLOCK (OPTIMIZED) ====================
+    const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+    let prevH = '', prevM = '', prevS = '';
+
+    function updateGreeting(hour) {
+        const el = document.getElementById('greeting');
+        let text = '';
+        if (hour < 5)       text = '夜深了，注意休息';
+        else if (hour < 9)  text = '早安，新的一天';
+        else if (hour < 12) text = '上午好，保持专注';
+        else if (hour < 14) text = '中午好，适当休息';
+        else if (hour < 18) text = '下午好，继续加油';
+        else if (hour < 22) text = '晚上好，享受时光';
+        else                text = '晚安，好梦';
+        el.textContent = text;
+    }
+
+    function updateDate() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth() + 1;
+        const d = now.getDate();
+        document.getElementById('date-line').textContent = `${y}年${m}月${d}日`;
+        document.getElementById('weekday').textContent = weekdays[now.getDay()];
+    }
+
+    function setFlipValue(unit, newValue) {
+        const top = unit.querySelector('.top span');
+        const bottom = unit.querySelector('.bottom span');
+        const flipTopSpan = unit.querySelector('.flip-top span');
+        const flipBottomSpan = unit.querySelector('.flip-bottom span');
+
+        const currentValue = top.textContent;
+        if (currentValue === newValue) return;
+
+        // 标准翻页逻辑：bottom 预先设为新值，动画中通过 flipBottom 覆盖它
+        bottom.textContent = newValue;
+        flipTopSpan.textContent = newValue;
+        flipBottomSpan.textContent = currentValue;
+
+        unit.classList.add('flipping');
+
+        // 动画结束后清理
+        const onEnd = () => {
+            unit.classList.remove('flipping');
+            top.textContent = newValue;
+            flipTopSpan.textContent = newValue;
+            flipBottomSpan.textContent = newValue;
+        };
+        unit.addEventListener('animationend', onEnd, { once: true });
+
+        // 兜底：防止 tab 隐藏等导致 animationend 不触发
+        setTimeout(() => {
+            if (unit.classList.contains('flipping')) {
+                unit.classList.remove('flipping');
+                top.textContent = newValue;
+                bottom.textContent = newValue;
+                flipTopSpan.textContent = newValue;
+                flipBottomSpan.textContent = newValue;
+            }
+        }, 900);
+    }
+
+    function tick() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+
+        updateGreeting(now.getHours());
+        updateDate();
+
+        if (h !== prevH) {
+            setFlipValue(document.querySelector('[data-pos="h1"]'), h[0]);
+            setFlipValue(document.querySelector('[data-pos="h2"]'), h[1]);
+            prevH = h;
+        }
+        if (m !== prevM) {
+            setFlipValue(document.querySelector('[data-pos="m1"]'), m[0]);
+            setFlipValue(document.querySelector('[data-pos="m2"]'), m[1]);
+            prevM = m;
+        }
+        setFlipValue(document.querySelector('[data-pos="s1"]'), s[0]);
+        setFlipValue(document.querySelector('[data-pos="s2"]'), s[1]);
+        prevS = s;
+
+        // 背景切换：只在整分钟（秒为00）触发，且当前分钟数是间隔的倍数
+        if (s === '00') {
+            const currentMinute = now.getHours() * 60 + now.getMinutes();
+            if (currentMinute !== lastBgSwitchMinute && (currentMinute % bgIntervalMin === 0)) {
+                switchBackground();
+                lastBgSwitchMinute = currentMinute;
+            }
+        }
+    }
+
+    function initClock() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        prevH = h; prevM = m; prevS = s;
+
+        const values = [h[0], h[1], m[0], m[1], s[0], s[1]];
+        const units = document.querySelectorAll('.flip-unit');
+        units.forEach((unit, i) => {
+            const v = values[i];
+            unit.querySelectorAll('span').forEach(span => span.textContent = v);
+        });
+
+        updateGreeting(now.getHours());
+        updateDate();
+    }
+
+    // ==================== UI CONTROLS ====================
+    const bgPanel = document.getElementById('bg-panel');
+    const bgBtn = document.getElementById('bg-control-btn');
+    const bgClose = document.getElementById('bg-panel-close');
+    const bgSlider = document.getElementById('bg-interval-slider');
+    const bgNextBtn = document.getElementById('bg-next-btn');
+    const bgPrevBtn = document.getElementById('bg-prev-btn');
+
+    function toggleBgPanel() {
+        isBgPanelOpen = !isBgPanelOpen;
+        bgPanel.classList.toggle('open', isBgPanelOpen);
+    }
+
+    bgBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleBgPanel(); });
+    bgClose.addEventListener('click', (e) => { e.stopPropagation(); toggleBgPanel(); });
+    document.addEventListener('click', (e) => {
+        if (isBgPanelOpen && !bgPanel.contains(e.target) && !bgBtn.contains(e.target)) {
+            toggleBgPanel();
+        }
+    });
+
+    // Type selection buttons
+    document.querySelectorAll('.bg-type-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const type = btn.dataset.type;
+            document.querySelectorAll('.bg-type-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            switchBgType(type);
+        });
+    });
+
+    bgSlider.addEventListener('input', (e) => {
+        bgIntervalMin = parseInt(e.target.value);
+        updateBgPanelUI();
+    });
+
+    bgNextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (bgImageList.length > 0) {
+            bgImageIndex = (bgImageIndex + 1) % bgImageList.length;
+            switchBackground(true);
+        }
+    });
+    bgPrevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (bgImageList.length > 0) {
+            bgImageIndex = (bgImageIndex - 1 + bgImageList.length) % bgImageList.length;
+            switchBackground(true);
+        }
+    });
+
+    // ==================== INIT ====================
+    function init() {
+        // 先加载本地风景图作为初始背景
+        const fallback = generateFallbackImages('landscape');
+        bgImageList = fallback;
+        bgImageIndex = 0;
+        nextBgIndex = 1;
+
+        bgLayer1.style.backgroundImage = `url(${fallback[0].url})`;
+        bgLayer2.style.backgroundImage = `url(${fallback[1].url})`;
+        preloadBgImage(fallback[2]?.url);
+        lastBgSwitchMinute = new Date().getHours() * 60 + new Date().getMinutes();
+        updateBgPanelUI();
+
+        initClock();
+        setInterval(tick, 1000);
+
+        fetchWeather();
+
+        // 异步从 Picsum 获取风景图片，替换本地图
+        // 先清空当前类型标记，强制触发获取
+        currentBgType = '';
+        switchBgType('landscape');
+    }
+
+    init();
+    </script>
+</body>
+</html>

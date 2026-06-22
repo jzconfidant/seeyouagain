@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stack Tower — 堆叠塔</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='52' width='56' height='8' rx='2' fill='%23fff'/%3E%3Crect x='8' y='40' width='48' height='10' rx='2' fill='rgba(255,255,255,0.7)'/%3E%3Crect x='12' y='28' width='40' height='10' rx='2' fill='rgba(255,255,255,0.4)'/%3E%3Crect x='16' y='16' width='32' height='10' rx='2' fill='rgba(255,255,255,0.2)'/%3E%3C/svg%3E">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #0a0a0a; color: #fff; font-family: -apple-system, 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; touch-action: none; }
+#canvas { position: fixed; inset: 0; display: block; }
+#ui {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 24px; pointer-events: none; user-select: none;
+}
+#ui .score { font-size: 28px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.8); }
+#ui .best { font-size: 12px; color: rgba(255,255,255,0.3); letter-spacing: 1px; }
+#ui .combo { font-size: 14px; color: rgba(255,255,255,0.5); letter-spacing: 2px; }
+#gameover {
+  position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+}
+#gameover.show { display: flex; }
+#gameover h2 { font-size: 36px; font-weight: 700; letter-spacing: 4px; margin-bottom: 8px; }
+#gameover .final { font-size: 18px; color: rgba(255,255,255,0.5); margin-bottom: 40px; }
+#gameover .btn {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; padding: 14px 40px; border-radius: 8px; font-size: 14px;
+  letter-spacing: 3px; cursor: pointer; transition: all 0.2s;
+}
+#gameover .btn:hover { background: rgba(255,255,255,0.2); }
+#hint {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10;
+  font-size: 12px; color: rgba(255,255,255,0.2); letter-spacing: 2px; pointer-events: none;
+}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="ui">
+  <div><div class="score" id="score">0</div><div class="best">BEST: <span id="best">0</span></div></div>
+  <div class="combo" id="combo"></div>
+</div>
+<div id="gameover">
+  <h2>GAME OVER</h2>
+  <div class="final">得分: <span id="final-score">0</span></div>
+  <button class="btn" id="restart">再玩一次</button>
+</div>
+<div id="hint">点击或按空格键放置方块</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const c = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize(); window.addEventListener('resize', resize);
+
+const BLOCK_W = 240, BLOCK_H = 40, SPEED_BASE = 3;
+let blocks = [], current = null, score = 0, best = parseInt(localStorage.getItem('stack-best') || '0');
+let gameOver = false, perfectStreak = 0, direction = 1, speed = SPEED_BASE;
+let cameraY = 0, targetCameraY = 0;
+
+document.getElementById('best').textContent = best;
+
+function initGame() {
+  blocks = [];
+  score = 0; perfectStreak = 0; direction = 1; speed = SPEED_BASE;
+  gameOver = false; cameraY = 0; targetCameraY = 0;
+  document.getElementById('score').textContent = '0';
+  document.getElementById('combo').textContent = '';
+  document.getElementById('gameover').classList.remove('show');
+  document.getElementById('hint').style.opacity = '1';
+  
+  // base block
+  const bw = Math.min(BLOCK_W, W * 0.7);
+  blocks.push({ x: (W - bw) / 2, y: H - 100, w: bw, h: BLOCK_H, color: '#fff' });
+  spawnBlock();
+}
+
+function spawnBlock() {
+  const prev = blocks[blocks.length - 1];
+  const bw = prev.w;
+  const y = prev.y - BLOCK_H - 4;
+  const x = direction === 1 ? -bw : W + bw;
+  current = { x, y, w: bw, h: BLOCK_H, targetY: y };
+  direction *= -1;
+  speed = Math.min(SPEED_BASE + score * 0.15, 8);
+}
+
+function placeBlock() {
+  if (gameOver || !current) return;
+  document.getElementById('hint').style.opacity = '0';
+  const prev = blocks[blocks.length - 1];
+  const left = Math.max(current.x, prev.x);
+  const right = Math.min(current.x + current.w, prev.x + prev.w);
+  const overlap = right - left;
+
+  if (overlap <= 0) {
+    gameOver = true;
+    if (score > best) { best = score; localStorage.setItem('stack-best', best); document.getElementById('best').textContent = best; }
+    document.getElementById('final-score').textContent = score;
+    document.getElementById('gameover').classList.add('show');
+    return;
+  }
+
+  const perfect = Math.abs(overlap - current.w) < 2;
+  if (perfect && score > 0) {
+    perfectStreak++;
+    current.w = prev.w; // perfect = same width
+    overlap = current.w;
+    document.getElementById('combo').textContent = 'PERFECT x' + perfectStreak;
+  } else {
+    perfectStreak = 0;
+    document.getElementById('combo').textContent = '';
+  }
+
+  const newX = left;
+  const newW = overlap;
+  // add fallen piece
+  const fallenX = current.x < prev.x ? current.x : right;
+  const fallenW = current.w - overlap;
+  if (fallenW > 0) {
+    blocks.push({ x: fallenX, y: current.y, w: fallenW, h: BLOCK_H, color: 'rgba(255,255,255,0.15)', falling: true, vy: 0 });
+  }
+
+  // hue shift per layer
+  const hue = (score * 15) % 360;
+  blocks.push({ x: newX, y: current.y, w: newW, h: BLOCK_H, color: `hsl(${hue}, 70%, 60%)` });
+  score++;
+  document.getElementById('score').textContent = score;
+
+  targetCameraY = Math.max(0, (H - 100) - current.y - 200);
+  spawnBlock();
+}
+
+function update() {
+  if (gameOver) return;
+  if (current) {
+    current.x += direction * speed;
+    if (direction === 1 && current.x > W) direction = -1;
+    if (direction === -1 && current.x + current.w < 0) direction = 1;
+  }
+  // falling blocks
+  for (const b of blocks) {
+    if (b.falling) {
+      b.vy += 0.5;
+      b.y += b.vy;
+    }
+  }
+  // clean up off-screen
+  blocks = blocks.filter(b => !b.falling || b.y < H + 200);
+  cameraY += (targetCameraY - cameraY) * 0.1;
+}
+
+function draw() {
+  c.fillStyle = '#0a0a0a';
+  c.fillRect(0, 0, W, H);
+
+  c.save();
+  c.translate(0, cameraY);
+
+  for (const b of blocks) {
+    c.fillStyle = b.color;
+    c.fillRect(b.x, b.y, b.w, b.h);
+    // highlight
+    c.fillStyle = 'rgba(255,255,255,0.1)';
+    c.fillRect(b.x, b.y, b.w, 3);
+    c.fillStyle = 'rgba(0,0,0,0.2)';
+    c.fillRect(b.x, b.y + b.h - 3, b.w, 3);
+  }
+
+  if (current && !gameOver) {
+    c.fillStyle = `hsl(${score * 15 % 360}, 70%, 60%)`;
+    c.fillRect(current.x, current.y, current.w, current.h);
+    c.fillStyle = 'rgba(255,255,255,0.2)';
+    c.fillRect(current.x, current.y, current.w, 3);
+    c.fillStyle = 'rgba(0,0,0,0.2)';
+    c.fillRect(current.x, current.y + current.h - 3, current.w, 3);
+  }
+
+  c.restore();
+
+  // ground line
+  const groundY = H - 100 + cameraY;
+  c.strokeStyle = 'rgba(255,255,255,0.1)';
+  c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, groundY); c.lineTo(W, groundY); c.stroke();
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+window.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); placeBlock(); } });
+window.addEventListener('click', () => placeBlock());
+window.addEventListener('touchstart', (e) => { e.preventDefault(); placeBlock(); }, { passive: false });
+document.getElementById('restart').addEventListener('click', initGame);
+
+initGame();
+loop();
+</script>
+</body>
+</html>

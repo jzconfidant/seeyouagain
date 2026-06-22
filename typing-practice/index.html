@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英文打字练习 - Typing Master</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='30' width='80' height='50' rx='10' fill='none' stroke='%234ade80' stroke-width='6'/%3E%3Crect x='22' y='42' width='16' height='12' rx='3' fill='%234ade80'/%3E%3Crect x='42' y='42' width='16' height='12' rx='3' fill='%234ade80'/%3E%3Crect x='62' y='42' width='16' height='12' rx='3' fill='%234ade80'/%3E%3Crect x='32' y='60' width='36' height='12' rx='3' fill='%234ade80'/%3E%3C/svg%3E">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                font-family: 'Inter', sans-serif;
+                background-color: #0f172a;
+                color: #e2e8f0;
+            }
+            .font-mono {
+                font-family: 'JetBrains Mono', monospace;
+            }
+        }
+        @layer components {
+            .char-correct {
+                color: #4ade80;
+                text-shadow: 0 0 10px rgba(74, 222, 128, 0.3);
+            }
+            .char-wrong {
+                color: #f87171;
+                background-color: rgba(248, 113, 113, 0.15);
+                border-radius: 2px;
+                text-decoration: underline;
+                text-decoration-color: #f87171;
+            }
+            .char-current {
+                color: #60a5fa;
+                background-color: rgba(96, 165, 250, 0.15);
+                border-radius: 2px;
+                animation: pulse 1.5s infinite;
+            }
+            .char-pending {
+                color: #64748b;
+            }
+            .cursor-blink {
+                display: inline-block;
+                width: 2px;
+                height: 1.2em;
+                background-color: #60a5fa;
+                vertical-align: text-bottom;
+                margin-left: 1px;
+                animation: blink 1s step-end infinite;
+            }
+            @keyframes blink {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0; }
+            }
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.7; }
+            }
+            .stat-card {
+                background: rgba(30, 41, 59, 0.6);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(148, 163, 184, 0.1);
+            }
+            .difficulty-btn.active {
+                background-color: #3b82f6;
+                color: white;
+                border-color: #3b82f6;
+            }
+            .typing-area:focus {
+                outline: none;
+            }
+            .typing-overlay {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+            }
+            .result-overlay {
+                background: rgba(15, 23, 42, 0.95);
+                backdrop-filter: blur(20px);
+            }
+            .progress-bar {
+                transition: width 0.3s ease;
+            }
+            .shake {
+                animation: shake 0.5s;
+            }
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                25% { transform: translateX(-5px); }
+                75% { transform: translateX(5px); }
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-4xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <div class="flex items-center justify-center gap-3 mb-2">
+                <i data-lucide="keyboard" class="w-8 h-8 text-blue-400"></i>
+                <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                    Typing Master
+                </h1>
+            </div>
+            <p class="text-slate-400 text-sm">英文打字练习 - 提升你的输入速度与准确率</p>
+        </header>
+
+        <!-- Difficulty Selector -->
+        <div class="flex justify-center gap-3 mb-6">
+            <button class="difficulty-btn active px-5 py-2 rounded-lg border border-slate-600 text-slate-300 hover:border-slate-400 transition-all text-sm font-medium" data-level="easy">
+                <span class="flex items-center gap-2">
+                    <i data-lucide="sprout" class="w-4 h-4"></i>
+                    简单
+                </span>
+            </button>
+            <button class="difficulty-btn px-5 py-2 rounded-lg border border-slate-600 text-slate-300 hover:border-slate-400 transition-all text-sm font-medium" data-level="medium">
+                <span class="flex items-center gap-2">
+                    <i data-lucide="tree-pine" class="w-4 h-4"></i>
+                    中等
+                </span>
+            </button>
+            <button class="difficulty-btn px-5 py-2 rounded-lg border border-slate-600 text-slate-300 hover:border-slate-400 transition-all text-sm font-medium" data-level="hard">
+                <span class="flex items-center gap-2">
+                    <i data-lucide="flame" class="w-4 h-4"></i>
+                    困难
+                </span>
+            </button>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="stat-card rounded-xl p-4 text-center">
+                <div class="text-slate-400 text-xs mb-1 flex items-center justify-center gap-1">
+                    <i data-lucide="gauge" class="w-3 h-3"></i>
+                    WPM
+                </div>
+                <div class="text-2xl font-bold text-blue-400" id="wpm-display">0</div>
+                <div class="text-slate-500 text-xs">字/分钟</div>
+            </div>
+            <div class="stat-card rounded-xl p-4 text-center">
+                <div class="text-slate-400 text-xs mb-1 flex items-center justify-center gap-1">
+                    <i data-lucide="target" class="w-3 h-3"></i>
+                    准确率
+                </div>
+                <div class="text-2xl font-bold text-emerald-400" id="accuracy-display">100%</div>
+                <div class="text-slate-500 text-xs">百分比</div>
+            </div>
+            <div class="stat-card rounded-xl p-4 text-center">
+                <div class="text-slate-400 text-xs mb-1 flex items-center justify-center gap-1">
+                    <i data-lucide="clock" class="w-3 h-3"></i>
+                    时间
+                </div>
+                <div class="text-2xl font-bold text-amber-400" id="time-display">0:00</div>
+                <div class="text-slate-500 text-xs">用时</div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="mb-4">
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+                <span>进度</span>
+                <span id="progress-text">0%</span>
+            </div>
+            <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                <div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full" id="progress-bar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Typing Area -->
+        <div class="relative mb-6">
+            <div class="stat-card rounded-xl p-6 min-h-[200px] relative" id="typing-container">
+                <!-- Hidden textarea for capturing input -->
+                <textarea 
+                    id="input-capture" 
+                    class="absolute inset-0 w-full h-full opacity-0 cursor-text resize-none z-10"
+                    autocomplete="off" 
+                    autocorrect="off" 
+                    autocapitalize="off" 
+                    spellcheck="false"
+                ></textarea>
+                
+                <!-- Visual display -->
+                <div class="font-mono text-lg leading-relaxed break-words select-none pointer-events-none" id="text-display">
+                    <!-- Text will be rendered here -->
+                </div>
+                
+                <!-- Focus hint -->
+                <div id="focus-hint" class="absolute inset-0 flex items-center justify-center bg-slate-900/80 rounded-xl cursor-pointer z-20">
+                    <div class="text-center">
+                        <i data-lucide="mouse-pointer-click" class="w-8 h-8 text-slate-400 mx-auto mb-2"></i>
+                        <p class="text-slate-300 text-sm">点击此处开始打字</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex justify-center gap-3">
+            <button id="restart-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                重新开始
+            </button>
+            <button id="new-text-btn" class="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-medium transition-all flex items-center gap-2">
+                <i data-lucide="shuffle" class="w-4 h-4"></i>
+                换一段
+            </button>
+        </div>
+
+        <!-- Result Modal -->
+        <div id="result-modal" class="result-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full shadow-2xl transform scale-95 opacity-0 transition-all duration-300" id="result-content">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="trophy" class="w-8 h-8 text-emerald-400"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white mb-1">练习完成!</h2>
+                    <p class="text-slate-400 text-sm">太棒了，来看看你的成绩</p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-slate-700/50 rounded-lg p-4 text-center">
+                        <div class="text-3xl font-bold text-blue-400" id="result-wpm">0</div>
+                        <div class="text-slate-400 text-xs mt-1">WPM</div>
+                    </div>
+                    <div class="bg-slate-700/50 rounded-lg p-4 text-center">
+                        <div class="text-3xl font-bold text-emerald-400" id="result-accuracy">0%</div>
+                        <div class="text-slate-400 text-xs mt-1">准确率</div>
+                    </div>
+                    <div class="bg-slate-700/50 rounded-lg p-4 text-center">
+                        <div class="text-3xl font-bold text-amber-400" id="result-time">0:00</div>
+                        <div class="text-slate-400 text-xs mt-1">用时</div>
+                    </div>
+                    <div class="bg-slate-700/50 rounded-lg p-4 text-center">
+                        <div class="text-3xl font-bold text-rose-400" id="result-errors">0</div>
+                        <div class="text-slate-400 text-xs mt-1">错误数</div>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <div class="flex justify-between text-xs text-slate-400 mb-2">
+                        <span>评级</span>
+                        <span id="result-rating" class="text-emerald-400 font-medium">优秀</span>
+                    </div>
+                    <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-amber-400 rounded-full" id="result-rating-bar" style="width: 85%"></div>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button id="result-restart-btn" class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        再来一次
+                    </button>
+                    <button id="result-new-text-btn" class="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-medium transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="shuffle" class="w-4 h-4"></i>
+                        新文本
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-8 text-slate-500 text-xs">
+            <p>按 <kbd class="px-2 py-1 bg-slate-700 rounded text-slate-300 text-xs">Tab</kbd> 快速重新开始</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

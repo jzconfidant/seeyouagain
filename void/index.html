@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>虚空 — 发呆</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='none' stroke='%23ffffff' stroke-width='2' opacity='0.3'/%3E%3Ccircle cx='32' cy='32' r='8' fill='none' stroke='%23ffffff' stroke-width='2'/%3E%3C/svg%3E">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background: #0a0a0a;
+            color: rgba(255,255,255,0.12);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+            cursor: none;
+        }
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+        }
+        #hint {
+            position: fixed;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            letter-spacing: 4px;
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 3s ease;
+            white-space: nowrap;
+        }
+        #hint.fade-out { opacity: 0; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="hint">点击呼吸 · 滑动星空 · 按 Z 入定</div>
+
+    <script>
+    // ==================== VOID ====================
+    // 虚空 — 一个什么都不做但什么都在变的发呆程序
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, CX, CY;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    function resize() {
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        ctx.scale(dpr, dpr);
+        CX = W / 2;
+        CY = H / 2;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ==================== STATE ====================
+    let zenMode = false;
+    let mouseX = CX, mouseY = CY;
+    let mouseVX = 0, mouseVY = 0;
+    let lastActivity = Date.now();
+    let showHint = true;
+    let lastMeteorTime = 0;
+    let nextMeteorDelay = 60000 + Math.random() * 120000; // 60~180秒
+
+    // ==================== COLOR ====================
+    // 深空星空色调 — 始终处于黑夜，但随时间有极微妙的蓝紫偏移
+    function hourColor(hour) {
+        // 深夜: 极暗蓝黑  凌晨: 微紫  黄昏: 藏青
+        const h = 220 + Math.sin((hour / 24) * Math.PI * 2) * 20; // 220~240 深蓝区间
+        const l = 6 + Math.sin((hour / 24) * Math.PI * 2) * 2;   // 6~8% 极暗
+        return `hsl(${h}, 35%, ${l}%)`;
+    }
+    function accentColor(hour) {
+        // 柔和的月光白 — 带极淡的蓝
+        return `hsl(210, 30%, 75%)`;
+    }
+    function starColor(alpha) {
+        // 星光：大部分白色，少数微蓝
+        return `rgba(240, 248, 255, ${alpha})`;
+    }
+
+    // ==================== STARS ====================
+    const stars = [];
+
+    function initStars() {
+        stars.length = 0;
+        const count = zenMode ? 0 : 120; // 更多星星
+        for (let i = 0; i < count; i++) {
+            stars.push({
+                x: Math.random() * W,
+                y: Math.random() * H,
+                size: Math.random() * 2 + 0.2,
+                speed: Math.random() * 0.03 + 0.01, // 更慢
+                angle: Math.random() * Math.PI * 2,
+                twinkle: Math.random() * Math.PI * 2,
+                twinkleSpeed: Math.random() * 0.008 + 0.002,
+                blueTint: Math.random() > 0.7 // 30% 微蓝星
+            });
+        }
+    }
+    initStars();
+
+    // ==================== RIPPLES ====================
+    const ripples = [];
+
+    // ==================== METEORS ====================
+    const meteors = [];
+    function spawnMeteor() {
+        meteors.push({
+            x: Math.random() * W,
+            y: Math.random() * H * 0.3 - 50, // 从上方出现
+            vx: (Math.random() - 0.3) * 12 + 4, // 主要向右下
+            vy: Math.random() * 8 + 6,
+            life: 1,
+            decay: Math.random() * 0.012 + 0.008,
+            tailLen: Math.random() * 60 + 40
+        });
+    }
+
+    function updateMeteors() {
+        for (let i = meteors.length - 1; i >= 0; i--) {
+            const m = meteors[i];
+            m.x += m.vx;
+            m.y += m.vy;
+            m.life -= m.decay;
+            if (m.life <= 0 || m.x > W + 100 || m.y > H + 100) {
+                meteors.splice(i, 1);
+            }
+        }
+    }
+
+    function drawMeteors() {
+        for (const m of meteors) {
+            const tailX = m.x - m.vx * (m.tailLen / 10);
+            const tailY = m.y - m.vy * (m.tailLen / 10);
+            const grad = ctx.createLinearGradient(tailX, tailY, m.x, m.y);
+            grad.addColorStop(0, 'rgba(255,255,255,0)');
+            grad.addColorStop(0.6, `rgba(200,230,255,${m.life * 0.3})`);
+            grad.addColorStop(1, `rgba(255,255,255,${m.life})`);
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(m.x, m.y);
+            ctx.stroke();
+            // 头部光晕
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(255,255,255,0.8)';
+            ctx.fillStyle = `rgba(255,255,255,${m.life})`;
+            ctx.beginPath();
+            ctx.arc(m.x, m.y, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    function addRipple(x, y) {
+        ripples.push({
+            x, y,
+            r: 0,
+            maxR: Math.max(W, H) * 0.25,
+            opacity: 0.6,
+            speed: 1.5,
+            born: Date.now()
+        });
+    }
+
+    // ==================== TRAIL ====================
+    const trail = [];
+    const MAX_TRAIL = 40;
+
+    // ==================== INPUT ====================
+    canvas.addEventListener('mousemove', e => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        mouseVX = e.movementX;
+        mouseVY = e.movementY;
+        lastActivity = Date.now();
+        if (showHint) {
+            showHint = false;
+            document.getElementById('hint').classList.add('fade-out');
+        }
+        // 添加拖尾点
+        if (!zenMode && (Math.abs(mouseVX) > 1 || Math.abs(mouseVY) > 1)) {
+            trail.push({ x: mouseX, y: mouseY, life: 1, size: Math.random() * 2 + 1 });
+            if (trail.length > MAX_TRAIL) trail.shift();
+        }
+    });
+
+    canvas.addEventListener('click', e => {
+        addRipple(e.clientX, e.clientY);
+        lastActivity = Date.now();
+    });
+
+    canvas.addEventListener('touchstart', e => {
+        const t = e.touches[0];
+        addRipple(t.clientX, t.clientY);
+        lastActivity = Date.now();
+        e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+        const t = e.touches[0];
+        mouseX = t.clientX;
+        mouseY = t.clientY;
+        if (!zenMode) {
+            trail.push({ x: mouseX, y: mouseY, life: 1, size: 2 });
+            if (trail.length > MAX_TRAIL) trail.shift();
+        }
+        e.preventDefault();
+    }, { passive: false });
+
+    // 键盘：Z 切换禅模式，空格重置
+    let spaceHoldStart = 0;
+    window.addEventListener('keydown', e => {
+        if (e.key === 'z' || e.key === 'Z') {
+            zenMode = !zenMode;
+            initStars();
+            lastActivity = Date.now();
+        }
+        if (e.key === ' ') {
+            spaceHoldStart = Date.now();
+        }
+    });
+
+    window.addEventListener('keyup', e => {
+        if (e.key === ' ' && spaceHoldStart > 0) {
+            const hold = Date.now() - spaceHoldStart;
+            if (hold > 2000) {
+                ripples.length = 0;
+                trail.length = 0;
+            }
+            spaceHoldStart = 0;
+        }
+    });
+
+    // ==================== RENDER ====================
+    function draw() {
+        const now = new Date();
+        const hour = now.getHours() + now.getMinutes() / 60;
+        const sec = now.getSeconds() + now.getMilliseconds() / 1000;
+
+        // 背景 — 时间色
+        const bgColor = hourColor(hour);
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, W, H);
+
+
+        if (!zenMode) {
+            // 星空
+            stars.forEach(star => {
+                star.x += Math.cos(star.angle) * star.speed;
+                star.y += Math.sin(star.angle) * star.speed;
+                star.twinkle += star.twinkleSpeed;
+
+                // 边界环绕
+                if (star.x < 0) star.x = W;
+                if (star.x > W) star.x = 0;
+                if (star.y < 0) star.y = H;
+                if (star.y > H) star.y = 0;
+
+                const alpha = (Math.sin(star.twinkle) + 1) / 2 * 0.7 + 0.15;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                if (star.blueTint) {
+                    ctx.fillStyle = `rgba(180, 210, 255, ${alpha})`;
+                } else {
+                    ctx.fillStyle = `rgba(240, 248, 255, ${alpha})`;
+                }
+                ctx.fill();
+            });
+
+            // 流星 — 每 1~3 分钟出现一颗
+            if (Date.now() - lastMeteorTime > nextMeteorDelay) {
+                spawnMeteor();
+                lastMeteorTime = Date.now();
+                nextMeteorDelay = 60000 + Math.random() * 120000; // 60~180秒
+            }
+            updateMeteors();
+            drawMeteors();
+
+            // 鼠标拖尾
+            trail.forEach((pt, i) => {
+                pt.life -= 0.015;
+                if (pt.life <= 0) {
+                    trail.splice(i, 1);
+                    return;
+                }
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, pt.size * pt.life, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(200, 220, 255, ${pt.life * 0.25})`;
+                ctx.fill();
+            });
+
+            // 涟漪
+            ripples.forEach((rip, i) => {
+                rip.r += rip.speed;
+                rip.opacity -= 0.003;
+
+                if (rip.opacity <= 0) {
+                    ripples.splice(i, 1);
+                    return;
+                }
+
+                ctx.beginPath();
+                ctx.arc(rip.x, rip.y, rip.r, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(200, 220, 255, ${rip.opacity})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            });
+
+            // 极简秒针线（底部，无数字）
+            const secAngle = (sec / 60) * Math.PI * 2 - Math.PI / 2;
+            const secLen = Math.min(W, H) * 0.03;
+            ctx.beginPath();
+            ctx.moveTo(CX + Math.cos(secAngle) * secLen * 0.3, CY + Math.sin(secAngle) * secLen * 0.3);
+            ctx.lineTo(CX + Math.cos(secAngle) * secLen, CY + Math.sin(secAngle) * secLen);
+            ctx.strokeStyle = `rgba(180, 210, 255, 0.08)`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+    </script>
+</body>
+</html>

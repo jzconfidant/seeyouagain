@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TypeDrift — 字体漂移</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext x='32' y='44' font-size='36' text-anchor='middle' fill='%23fff'%3E漂%3C/text%3E%3C/svg%3E">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #0a0a0a; color: #fff; font-family: -apple-system, 'Segoe UI', 'Noto Sans SC', sans-serif; height: 100vh; overflow: hidden; }
+#canvas { position: fixed; inset: 0; display: block; cursor: crosshair; }
+
+#ui {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10;
+  display: flex; gap: 10px; align-items: center;
+  background: rgba(10,10,10,0.8); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 16px;
+}
+#input-text {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px;
+  width: 280px; outline: none; letter-spacing: 2px;
+}
+#input-text::placeholder { color: rgba(255,255,255,0.2); }
+#ui .btn {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.6); padding: 8px 16px; border-radius: 6px; font-size: 12px;
+  letter-spacing: 1px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+#ui .btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+#hint {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10;
+  font-size: 11px; color: rgba(255,255,255,0.2); letter-spacing: 1px; text-align: center;
+  pointer-events: none; user-select: none; line-height: 1.8;
+}
+
+#legend {
+  position: fixed; top: 80px; left: 20px; z-index: 10;
+  font-size: 11px; color: rgba(255,255,255,0.3); line-height: 1.8;
+  pointer-events: none; user-select: none;
+}
+#legend span { display: block; }
+#legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="ui">
+  <input type="text" id="input-text" placeholder="输入文字..." value="山风生火水石">
+  <button class="btn" id="btn-release">释放</button>
+  <button class="btn" id="btn-reset">归位</button>
+  <button class="btn" id="btn-clear">清空</button>
+</div>
+
+<div id="legend">
+  <span><span class="dot" style="background:#5a7a9a"></span>水 · 轻飘流动</span>
+  <span><span class="dot" style="background:#e05030"></span>火 · 碰撞发光</span>
+  <span><span class="dot" style="background:#5a5a5a"></span>石 · 沉重稳固</span>
+  <span><span class="dot" style="background:#9a9a9a"></span>风 · 随风而去</span>
+  <span><span class="dot" style="background:#4a7a3a"></span>木 · 自然平衡</span>
+</div>
+
+<div id="hint">
+  鼠标移动产生风力 · 点击产生爆炸 · 空格暂停/继续<br>
+  每个汉字按部首拥有不同物理性格
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const c = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize(); window.addEventListener('resize', resize);
+
+// ===================== CHARACTER PROPERTIES =====================
+function getCharNature(ch) {
+  const water = /[水氵雨永泉河海江湖]/.test(ch);
+  const fire = /[火灬光日灯炎热焰]/.test(ch);
+  const heavy = /[石山金土玉岩矿]/.test(ch);
+  const wind = /[风气云飞空飘羽]/.test(ch);
+  const plant = /[木艹花草树竹林森]/.test(ch);
+
+  if (water) return { type: 'water', mass: 0.4, friction: 0.92, color: '#5a7a9a', glow: 'rgba(90,122,154,0.3)', trail: true };
+  if (fire) return { type: 'fire', mass: 0.7, friction: 0.96, color: '#e05030', glow: 'rgba(224,80,48,0.4)', spark: true };
+  if (heavy) return { type: 'heavy', mass: 4.0, friction: 0.85, color: '#7a7a7a', glow: 'rgba(120,120,120,0.2)', trail: false };
+  if (wind) return { type: 'wind', mass: 0.25, friction: 0.97, color: '#b0b0b0', glow: 'rgba(180,180,180,0.3)', trail: true };
+  if (plant) return { type: 'plant', mass: 1.0, friction: 0.93, color: '#4a7a3a', glow: 'rgba(74,122,58,0.3)', trail: false };
+  return { type: 'normal', mass: 1.0, friction: 0.94, color: '#d0d0d0', glow: 'rgba(200,200,200,0.2)', trail: false };
+}
+
+// ===================== PHYSICS =====================
+let glyphs = [];
+let particles = [];
+let paused = false;
+let mouse = { x: 0, y: 0, vx: 0, vy: 0, prevX: 0, prevY: 0 };
+
+class Glyph {
+  constructor(text, x, y) {
+    this.text = text;
+    this.nature = getCharNature(text);
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.ox = x; this.oy = y; // original position
+    this.size = 28 + Math.random() * 8;
+    this.angle = 0; this.va = 0;
+    this.trail = [];
+    this.life = 1;
+  }
+
+  update() {
+    if (paused) return;
+
+    // Gravity
+    this.vy += 0.15 * this.nature.mass;
+
+    // Wind from mouse
+    const dx = this.x - mouse.x;
+    const dy = this.y - mouse.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 200 && dist > 0) {
+      const force = (200 - dist) / 200 * 0.8;
+      this.vx += mouse.vx * force / this.nature.mass;
+      this.vy += mouse.vy * force / this.nature.mass;
+    }
+
+    // Return to original position (gentle spring)
+    const rdx = this.ox - this.x;
+    const rdy = this.oy - this.y;
+    this.vx += rdx * 0.0005 / this.nature.mass;
+    this.vy += rdy * 0.0005 / this.nature.mass;
+
+    // Friction
+    this.vx *= this.nature.friction;
+    this.vy *= this.nature.friction;
+    this.va *= 0.95;
+
+    // Move
+    this.x += this.vx;
+    this.y += this.vy;
+    this.angle += this.va;
+
+    // Trail for water/wind
+    if (this.nature.trail) {
+      this.trail.push({ x: this.x, y: this.y, alpha: 0.6 });
+      if (this.trail.length > 20) this.trail.shift();
+    }
+
+    // Boundary
+    if (this.x < 20) { this.x = 20; this.vx *= -0.6; }
+    if (this.x > W - 20) { this.x = W - 20; this.vx *= -0.6; }
+    if (this.y < 20) { this.y = 20; this.vy *= -0.6; }
+    if (this.y > H - 20) { this.y = H - 20; this.vy *= -0.6; }
+  }
+
+  draw() {
+    // Trail
+    if (this.trail.length > 1) {
+      c.beginPath();
+      for (let i = 0; i < this.trail.length; i++) {
+        const t = this.trail[i];
+        t.alpha *= 0.95;
+        if (i === 0) c.moveTo(t.x, t.y);
+        else c.lineTo(t.x, t.y);
+      }
+      c.strokeStyle = this.nature.color;
+      c.lineWidth = 1;
+      c.globalAlpha = 0.3;
+      c.stroke();
+      c.globalAlpha = 1;
+      this.trail = this.trail.filter(t => t.alpha > 0.01);
+    }
+
+    // Glow
+    c.save();
+    c.translate(this.x, this.y);
+    c.rotate(this.angle);
+    c.shadowColor = this.nature.color;
+    c.shadowBlur = 20;
+    c.fillStyle = this.nature.color;
+    c.font = `bold ${this.size}px -apple-system, 'Noto Sans SC', sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(this.text, 0, 0);
+    c.restore();
+  }
+}
+
+class Particle {
+  constructor(x, y, color) {
+    this.x = x; this.y = y;
+    this.vx = (Math.random() - 0.5) * 6;
+    this.vy = (Math.random() - 0.5) * 6;
+    this.life = 1;
+    this.color = color;
+    this.size = Math.random() * 3 + 1;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += 0.1;
+    this.life -= 0.02;
+  }
+  draw() {
+    c.globalAlpha = this.life;
+    c.fillStyle = this.color;
+    c.beginPath();
+    c.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    c.fill();
+    c.globalAlpha = 1;
+  }
+}
+
+// ===================== COLLISION =====================
+function checkCollisions() {
+  for (let i = 0; i < glyphs.length; i++) {
+    for (let j = i + 1; j < glyphs.length; j++) {
+      const a = glyphs[i], b = glyphs[j];
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const minDist = 30;
+
+      if (dist < minDist && dist > 0) {
+        const overlap = (minDist - dist) / 2;
+        const nx = dx / dist;
+        const ny = dy / dist;
+
+        a.x += nx * overlap;
+        a.y += ny * overlap;
+        b.x -= nx * overlap;
+        b.y -= ny * overlap;
+
+        // Elastic collision
+        const dvx = a.vx - b.vx;
+        const dvy = a.vy - b.vy;
+        const dv = dvx * nx + dvy * ny;
+        if (dv < 0) {
+          const impulse = dv * 0.5;
+          a.vx -= impulse * nx / a.nature.mass;
+          a.vy -= impulse * ny / a.nature.mass;
+          b.vx += impulse * nx / b.nature.mass;
+          b.vy += impulse * ny / b.nature.mass;
+        }
+
+        // Spark for fire
+        if (a.nature.spark || b.nature.spark) {
+          for (let k = 0; k < 5; k++) {
+            particles.push(new Particle((a.x + b.x)/2, (a.y + b.y)/2, '#ffaa44'));
+          }
+        }
+      }
+    }
+  }
+}
+
+// ===================== INIT =====================
+function createGlyphs(text) {
+  glyphs = [];
+  const chars = text.split('');
+  const cols = Math.min(chars.length, Math.floor(W / 50));
+  const startX = (W - cols * 50) / 2 + 25;
+  const startY = H / 2 - Math.floor(chars.length / cols) * 30;
+
+  chars.forEach((ch, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = startX + col * 50 + (Math.random() - 0.5) * 10;
+    const y = startY + row * 60 + (Math.random() - 0.5) * 10;
+    glyphs.push(new Glyph(ch, x, y));
+  });
+}
+
+function release() {
+  glyphs.forEach(g => {
+    g.vx = (Math.random() - 0.5) * 15;
+    g.vy = (Math.random() - 0.5) * 15 - 5;
+    g.va = (Math.random() - 0.5) * 0.2;
+  });
+}
+
+function reset() {
+  glyphs.forEach(g => {
+    g.x = g.ox;
+    g.y = g.oy;
+    g.vx = 0;
+    g.vy = 0;
+    g.va = 0;
+    g.angle = 0;
+    g.trail = [];
+  });
+}
+
+function explode(x, y) {
+  glyphs.forEach(g => {
+    const dx = g.x - x;
+    const dy = g.y - y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 200 && dist > 0) {
+      const force = (200 - dist) / 200 * 20;
+      g.vx += (dx / dist) * force / g.nature.mass;
+      g.vy += (dy / dist) * force / g.nature.mass;
+    }
+  });
+  for (let i = 0; i < 20; i++) {
+    particles.push(new Particle(x, y, '#fff'));
+  }
+}
+
+// ===================== EVENTS =====================
+document.getElementById('btn-release').addEventListener('click', release);
+document.getElementById('btn-reset').addEventListener('click', reset);
+document.getElementById('btn-clear').addEventListener('click', () => { glyphs = []; });
+
+document.getElementById('input-text').addEventListener('change', (e) => {
+  createGlyphs(e.target.value || '字体漂移');
+});
+
+document.getElementById('input-text').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') createGlyphs(e.target.value || '字体漂移');
+});
+
+window.addEventListener('mousemove', (e) => {
+  mouse.vx = (e.clientX - mouse.prevX) * 0.3;
+  mouse.vy = (e.clientY - mouse.prevY) * 0.3;
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  mouse.prevX = e.clientX; mouse.prevY = e.clientY;
+});
+
+window.addEventListener('click', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+  explode(e.clientX, e.clientY);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { paused = !paused; e.preventDefault(); }
+  if (e.code === 'KeyR') release();
+});
+
+// Touch
+window.addEventListener('touchmove', (e) => {
+  const t = e.touches[0];
+  mouse.vx = (t.clientX - mouse.prevX) * 0.3;
+  mouse.vy = (t.clientY - mouse.prevY) * 0.3;
+  mouse.x = t.clientX; mouse.y = t.clientY;
+  mouse.prevX = t.clientX; mouse.prevY = t.clientY;
+}, { passive: true });
+window.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  mouse.prevX = t.clientX; mouse.prevY = t.clientY;
+}, { passive: true });
+
+// ===================== LOOP =====================
+function loop() {
+  // Clear with fade
+  c.fillStyle = 'rgba(10,10,10,0.3)';
+  c.fillRect(0, 0, W, H);
+
+  // Grid
+  c.strokeStyle = 'rgba(255,255,255,0.02)';
+  c.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+  for (let y = 0; y < H; y += 40) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+
+  glyphs.forEach(g => { g.update(); g.draw(); });
+  checkCollisions();
+
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => { p.update(); p.draw(); });
+
+  requestAnimationFrame(loop);
+}
+
+createGlyphs('山风生火水石');
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RainType — 雨滴打字</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 8 L32 48' stroke='%2360a5fa' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='52' r='6' fill='%2360a5fa'/%3E%3Cpath d='M20 16 L24 24' stroke='%2360a5fa' stroke-width='2' opacity='0.5'/%3E%3Cpath d='M44 16 L40 24' stroke='%2360a5fa' stroke-width='2' opacity='0.5'/%3E%3C/svg%3E">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e17; font-family: 'Segoe UI', 'PingFang SC', sans-serif; }
+canvas { display: block; position: fixed; top: 0; left: 0; }
+#ui {
+    position: fixed; top: 20px; left: 20px; z-index: 10;
+    color: rgba(255,255,255,0.35); font-size: 13px; letter-spacing: 2px; pointer-events: none;
+}
+#ui span { color: #60a5fa; font-weight: 600; }
+#verse-box {
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+    text-align: center; pointer-events: none; z-index: 10;
+    transition: opacity 0.5s;
+}
+#collected {
+    font-size: 28px; color: rgba(255,255,255,0.85); letter-spacing: 8px;
+    min-height: 40px; font-weight: 300;
+}
+#progress {
+    font-size: 12px; color: rgba(255,255,255,0.25); margin-top: 8px; letter-spacing: 3px;
+}
+#verse-display {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none; z-index: 20;
+    opacity: 0; transition: opacity 1s;
+}
+#verse-display.show { opacity: 1; }
+#verse-display h2 {
+    font-size: 32px; color: rgba(255,255,255,0.9); font-weight: 300;
+    letter-spacing: 6px; line-height: 1.6; text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+}
+#verse-display p {
+    font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 16px; letter-spacing: 2px;
+}
+#hint {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none; z-index: 15; opacity: 1; transition: opacity 1s;
+}
+#hint.fade { opacity: 0; pointer-events: none; }
+#hint h1 { font-size: 48px; color: rgba(255,255,255,0.12); font-weight: 100; letter-spacing: 12px; }
+#hint p { font-size: 13px; color: rgba(255,255,255,0.25); margin-top: 20px; letter-spacing: 3px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">得分: <span id="score">0</span> | 失误: <span id="miss">0</span> | 诗句: <span id="vnum">1</span>/6</div>
+<div id="hint">
+    <h1>雨 滴 打 字</h1>
+    <p>按键盘击碎雨滴，收集诗句<br>按空格开始</p>
+</div>
+<div id="verse-display">
+    <h2 id="vtext"></h2>
+    <p id="vauthor"></p>
+</div>
+<div id="verse-box">
+    <div id="collected"></div>
+    <div id="progress"></div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, dpr = Math.min(window.devicePixelRatio || 1, 2);
+function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize(); window.addEventListener('resize', resize);
+
+// ===================== POEMS =====================
+const verses = [
+    { text: '春水碧于天，画船听雨眠', author: '韦庄 · 菩萨蛮' },
+    { text: '空山新雨后，天气晚来秋', author: '王维 · 山居秋暝' },
+    { text: '沾衣欲湿杏花雨，吹面不寒杨柳风', author: '志南 · 绝句' },
+    { text: '君问归期未有期，巴山夜雨涨秋池', author: '李商隐 · 夜雨寄北' },
+    { text: '好雨知时节，当春乃发生', author: '杜甫 · 春夜喜雨' },
+    { text: '青箬笠，绿蓑衣，斜风细雨不须归', author: '张志和 · 渔歌子' }
+];
+
+// ===================== STATE =====================
+let started = false;
+let verseIndex = 0;
+let currentVerse = verses[0].text.replace(/[，。]/g, '');
+let collected = '';
+let score = 0, miss = 0;
+let raindrops = [];
+let particles = [];
+let bgDrops = [];
+let lastSpawn = 0;
+let spawnInterval = 1200;
+let verseShown = false;
+let showTimer = 0;
+
+// ===================== RAIN DROP =====================
+class RainDrop {
+    constructor(char) {
+        this.char = char;
+        this.x = Math.random() * (W - 80) + 40;
+        this.y = -40;
+        this.speed = Math.random() * 1.5 + 1.8;
+        this.size = 22;
+        this.wobble = Math.random() * Math.PI * 2;
+        this.active = true;
+        this.glow = 0;
+    }
+    update() {
+        this.y += this.speed;
+        this.wobble += 0.04;
+        this.x += Math.sin(this.wobble) * 0.5;
+        this.glow = Math.max(0, this.glow - 0.05);
+        if (this.y > H * 0.88) {
+            this.active = false;
+            miss++;
+            updateUI();
+        }
+    }
+    draw() {
+        if (!this.active) return;
+        ctx.save();
+        // Glow on hit
+        if (this.glow > 0) {
+            ctx.shadowBlur = 20 + this.glow * 30;
+            ctx.shadowColor = '#60a5fa';
+        }
+        ctx.font = `${this.size}px "Segoe UI", "PingFang SC", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = this.glow > 0 ? '#a5d8ff' : 'rgba(200, 230, 255, 0.85)';
+        ctx.fillText(this.char, this.x, this.y);
+        // Rain trail
+        ctx.strokeStyle = 'rgba(150, 200, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y - 12);
+        ctx.lineTo(this.x, this.y - 35);
+        ctx.stroke();
+        ctx.restore();
+    }
+    hit() {
+        this.active = false;
+        this.glow = 1;
+        for (let i = 0; i < 8; i++) {
+            particles.push(new Particle(this.x, this.y, '#60a5fa'));
+        }
+        for (let i = 0; i < 4; i++) {
+            particles.push(new Particle(this.x, this.y, '#ffffff'));
+        }
+        score++;
+        updateUI();
+    }
+}
+
+// ===================== BG DROPS =====================
+class BgDrop {
+    constructor() { this.reset(); }
+    reset() {
+        this.x = Math.random() * W;
+        this.y = Math.random() * -H;
+        this.speed = Math.random() * 4 + 6;
+        this.len = Math.random() * 20 + 10;
+        this.opacity = Math.random() * 0.1 + 0.03;
+    }
+    update() {
+        this.y += this.speed;
+        if (this.y > H) this.reset();
+    }
+    draw() {
+        ctx.strokeStyle = `rgba(150, 190, 230, ${this.opacity})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x, this.y + this.len);
+        ctx.stroke();
+    }
+}
+
+// ===================== PARTICLES =====================
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 5;
+        this.vy = (Math.random() - 0.5) * 5 - 2;
+        this.life = 1;
+        this.color = color;
+        this.size = Math.random() * 3 + 1;
+    }
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.vy += 0.15;
+        this.life -= 0.02;
+    }
+    draw() {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+// ===================== SPAWN =====================
+function spawnDrop() {
+    if (!started || verseShown) return;
+    const needed = currentVerse.slice(collected.length);
+    if (needed.length === 0) return;
+    const chars = needed.split('');
+    // Don't duplicate same char on screen
+    const onScreen = new Set(raindrops.filter(d => d.active).map(d => d.char));
+    const available = chars.filter(c => !onScreen.has(c));
+    if (available.length === 0) return;
+    const char = available[Math.floor(Math.random() * available.length)];
+    raindrops.push(new RainDrop(char));
+}
+
+// ===================== INPUT =====================
+window.addEventListener('keydown', e => {
+    if (!started && e.key === ' ') {
+        started = true;
+        document.getElementById('hint').classList.add('fade');
+        return;
+    }
+    if (!started || verseShown) return;
+    const key = e.key;
+    const match = raindrops.find(d => d.active && d.char === key);
+    if (match) {
+        match.hit();
+        collected += key;
+        document.getElementById('collected').textContent = collected;
+        document.getElementById('progress').textContent = `${collected.length} / ${currentVerse.length}`;
+        if (collected === currentVerse) {
+            showVerseComplete();
+        }
+    }
+});
+
+function showVerseComplete() {
+    verseShown = true;
+    const v = verses[verseIndex];
+    document.getElementById('vtext').textContent = v.text;
+    document.getElementById('vauthor').textContent = '— ' + v.author;
+    document.getElementById('verse-display').classList.add('show');
+    setTimeout(() => {
+        document.getElementById('verse-display').classList.remove('show');
+        verseIndex++;
+        if (verseIndex >= verses.length) verseIndex = 0;
+        collected = '';
+        currentVerse = verses[verseIndex].text.replace(/[，。]/g, '');
+        document.getElementById('collected').textContent = '';
+        document.getElementById('progress').textContent = '';
+        document.getElementById('vnum').textContent = verseIndex + 1;
+        verseShown = false;
+        spawnInterval = Math.max(600, 1200 - verseIndex * 80);
+    }, 3000);
+}
+
+function updateUI() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('miss').textContent = miss;
+}
+
+// ===================== INIT =====================
+for (let i = 0; i < 80; i++) bgDrops.push(new BgDrop());
+
+// ===================== RENDER =====================
+function draw() {
+    const time = Date.now();
+
+    // Background
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, W, H);
+
+    // Distant city lights (subtle)
+    ctx.fillStyle = 'rgba(40, 60, 90, 0.3)';
+    for (let i = 0; i < 6; i++) {
+        const x = (W / 6) * i + Math.sin(time * 0.0005 + i) * 30;
+        ctx.fillRect(x, H - 80, 40 + Math.random() * 20, 60);
+    }
+    // Window lights
+    ctx.fillStyle = 'rgba(255, 220, 100, 0.15)';
+    for (let i = 0; i < 20; i++) {
+        const x = Math.random() * W;
+        const y = H - 70 + Math.random() * 40;
+        if (Math.sin(time * 0.001 + i * 3) > 0) {
+            ctx.fillRect(x, y, 3, 4);
+        }
+    }
+
+    // Background rain
+    bgDrops.forEach(d => { d.update(); d.draw(); });
+
+    // Spawn
+    if (started && !verseShown && time - lastSpawn > spawnInterval) {
+        spawnDrop();
+        lastSpawn = time;
+    }
+
+    // Rain drops
+    raindrops.forEach(d => { d.update(); d.draw(); });
+    raindrops = raindrops.filter(d => d.active || d.glow > 0);
+
+    // Particles
+    particles.forEach(p => { p.update(); p.draw(); });
+    particles = particles.filter(p => p.life > 0);
+
+    // Ground puddle
+    ctx.fillStyle = 'rgba(20, 40, 60, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(W/2, H - 10, W * 0.45, 25, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>

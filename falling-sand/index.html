@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Falling Sand — 落沙实验室</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='40' width='56' height='20' rx='2' fill='%23c4a35a'/%3E%3Ccircle cx='20' cy='24' r='8' fill='%23e8a838'/%3E%3Ccircle cx='44' cy='16' r='8' fill='%23e8a838'/%3E%3Ccircle cx='32' cy='8' r='8' fill='%23e8a838'/%3E%3C/svg%3E">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #0a0a0a; color: #fff; font-family: -apple-system, 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; }
+#canvas { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); display: block; cursor: crosshair; }
+
+#ui {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10;
+  display: flex; gap: 8px; background: rgba(10,10,10,0.8); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px;
+}
+.mat-btn {
+  width: 36px; height: 36px; border-radius: 6px; border: 2px solid transparent;
+  cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: rgba(255,255,255,0.4);
+}
+.mat-btn:hover { transform: scale(1.1); border-color: rgba(255,255,255,0.3); }
+.mat-btn.active { border-color: rgba(255,255,255,0.6); box-shadow: 0 0 8px rgba(255,255,255,0.1); }
+#mat-sand { background: #e8a838; }
+#mat-water { background: #3a7ab5; }
+#mat-stone { background: #5a5a5a; }
+#mat-fire { background: #e05030; }
+#mat-plant { background: #4a8a3a; }
+#mat-erase { background: rgba(255,255,255,0.1); font-size: 14px; color: rgba(255,255,255,0.6); }
+
+#info {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 10;
+  font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 1px; text-align: center;
+  pointer-events: none; user-select: none;
+}
+
+#clear-btn {
+  position: fixed; top: 16px; right: 16px; z-index: 10;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.4); padding: 8px 16px; border-radius: 6px; font-size: 11px;
+  letter-spacing: 1px; cursor: pointer; transition: all 0.2s;
+}
+#clear-btn:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="ui">
+  <div class="mat-btn active" id="mat-sand" data-mat="1" title="沙子"></div>
+  <div class="mat-btn" id="mat-water" data-mat="2" title="水"></div>
+  <div class="mat-btn" id="mat-stone" data-mat="3" title="石头"></div>
+  <div class="mat-btn" id="mat-fire" data-mat="4" title="火"></div>
+  <div class="mat-btn" id="mat-plant" data-mat="5" title="植物"></div>
+  <div class="mat-btn" id="mat-erase" data-mat="0" title="擦除">✕</div>
+</div>
+
+<button id="clear-btn">清空</button>
+
+<div id="info">
+  按住鼠标左键绘制 | 1-6 切换材料 | 滚轮调整笔刷大小<br>
+  沙子会下落，水会流动，火会上升，植物遇水生长
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const c = canvas.getContext('2d', { willReadFrequently: true });
+
+const SCALE = 4;
+const W = 200, H = 150;
+canvas.width = W * SCALE; canvas.height = H * SCALE;
+
+// Materials: 0=empty, 1=sand, 2=water, 3=stone, 4=fire, 5=plant
+const COLORS = {
+  0: [0, 0, 0, 0],
+  1: [232, 168, 56, 255],   // sand
+  2: [58, 122, 181, 255],   // water
+  3: [90, 90, 90, 255],     // stone
+  4: [224, 80, 48, 255],    // fire
+  5: [74, 138, 58, 255],    // plant
+};
+const MAT_NAMES = { 0: '擦除', 1: '沙子', 2: '水', 3: '石头', 4: '火', 5: '植物' };
+
+let grid = new Uint8Array(W * H);
+let nextGrid = new Uint8Array(W * H);
+let currentMat = 1;
+let brushSize = 3;
+let isDrawing = false;
+let mouseX = 0, mouseY = 0;
+
+function idx(x, y) { return y * W + x; }
+function get(x, y) {
+  if (x < 0 || x >= W || y < 0 || y >= H) return 3; // out of bounds = stone
+  return grid[idx(x, y)];
+}
+function set(g, x, y, v) {
+  if (x >= 0 && x < W && y >= 0 && y < H) g[idx(x, y)] = v;
+}
+
+// Initialize with some ground
+for (let x = 0; x < W; x++) {
+  for (let y = H - 5; y < H; y++) {
+    grid[idx(x, y)] = Math.random() < 0.8 ? 3 : 0;
+  }
+}
+
+// Draw to canvas
+function render() {
+  const imgData = c.createImageData(W * SCALE, H * SCALE);
+  const data = imgData.data;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const mat = grid[idx(x, y)];
+      const color = COLORS[mat];
+      // slight random variation
+      const r = color[0] + (Math.random() - 0.5) * 10;
+      const g = color[1] + (Math.random() - 0.5) * 10;
+      const b = color[2] + (Math.random() - 0.5) * 10;
+      const a = color[3];
+      for (let sy = 0; sy < SCALE; sy++) {
+        for (let sx = 0; sx < SCALE; sx++) {
+          const px = (y * SCALE + sy) * (W * SCALE) + (x * SCALE + sx);
+          data[px * 4] = r;
+          data[px * 4 + 1] = g;
+          data[px * 4 + 2] = b;
+          data[px * 4 + 3] = a;
+        }
+      }
+    }
+  }
+  c.putImageData(imgData, 0, 0);
+}
+
+// Simulation step
+function simulate() {
+  nextGrid.set(grid);
+
+  for (let y = H - 1; y >= 0; y--) {
+    for (let x = 0; x < W; x++) {
+      const mat = grid[idx(x, y)];
+      if (mat === 0) continue;
+
+      if (mat === 1) { // sand
+        const below = get(x, y + 1);
+        if (below === 0) {
+          set(nextGrid, x, y, 0);
+          set(nextGrid, x, y + 1, 1);
+        } else if (below === 2) {
+          set(nextGrid, x, y, 2);
+          set(nextGrid, x, y + 1, 1);
+        } else {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const side = get(x + dir, y + 1);
+          if (side === 0 || side === 2) {
+            set(nextGrid, x, y, 0);
+            set(nextGrid, x + dir, y + 1, 1);
+          }
+        }
+      } else if (mat === 2) { // water
+        const below = get(x, y + 1);
+        if (below === 0) {
+          set(nextGrid, x, y, 0);
+          set(nextGrid, x, y + 1, 2);
+        } else {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const side = get(x + dir, y);
+          if (side === 0) {
+            set(nextGrid, x, y, 0);
+            set(nextGrid, x + dir, y, 2);
+          }
+        }
+      } else if (mat === 4) { // fire
+        // fire rises
+        const above = get(x, y - 1);
+        if (above === 0 && Math.random() < 0.6) {
+          set(nextGrid, x, y, 0);
+          set(nextGrid, x, y - 1, 4);
+        } else if (Math.random() < 0.05) {
+          set(nextGrid, x, y, 0); // fire burns out
+        }
+        // fire burns plant
+        const neighbors = [[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+        for (const [nx, ny] of neighbors) {
+          if (get(nx, ny) === 5) set(nextGrid, nx, ny, 4);
+        }
+      } else if (mat === 5) { // plant
+        // plant grows if near water
+        const neighbors = [[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+        for (const [nx, ny] of neighbors) {
+          if (get(nx, ny) === 2 && Math.random() < 0.02) {
+            set(nextGrid, nx, ny, 5); // water turns to plant
+          }
+        }
+      }
+    }
+  }
+
+  grid.set(nextGrid);
+}
+
+// Drawing
+function drawAt(cx, cy) {
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((cx - rect.left) / SCALE);
+  const y = Math.floor((cy - rect.top) / SCALE);
+  const r = Math.floor(brushSize / 2);
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx*dx + dy*dy <= r*r) {
+        set(grid, x + dx, y + dy, currentMat);
+      }
+    }
+  }
+}
+
+canvas.addEventListener('mousedown', (e) => { isDrawing = true; drawAt(e.clientX, e.clientY); });
+window.addEventListener('mouseup', () => isDrawing = false);
+window.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX; mouseY = e.clientY;
+  if (isDrawing) drawAt(e.clientX, e.clientY);
+});
+
+// Touch support
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  isDrawing = true;
+  const t = e.touches[0];
+  drawAt(t.clientX, t.clientY);
+}, { passive: false });
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const t = e.touches[0];
+  drawAt(t.clientX, t.clientY);
+}, { passive: false });
+window.addEventListener('touchend', () => isDrawing = false);
+
+// Material buttons
+const matBtns = document.querySelectorAll('.mat-btn');
+matBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    matBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMat = parseInt(btn.dataset.mat);
+  });
+});
+
+// Keyboard shortcuts
+window.addEventListener('keydown', (e) => {
+  const key = e.key;
+  if (key >= '1' && key <= '6') {
+    const mat = parseInt(key);
+    if (mat >= 0 && mat <= 6) {
+      currentMat = mat;
+      matBtns.forEach(b => b.classList.toggle('active', parseInt(b.dataset.mat) === mat));
+    }
+  }
+});
+
+// Brush size
+window.addEventListener('wheel', (e) => {
+  brushSize = Math.max(1, Math.min(15, brushSize + (e.deltaY > 0 ? 1 : -1)));
+}, { passive: true });
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  grid.fill(0);
+  // re-add ground
+  for (let x = 0; x < W; x++) {
+    for (let y = H - 5; y < H; y++) {
+      grid[idx(x, y)] = Math.random() < 0.8 ? 3 : 0;
+    }
+  }
+});
+
+// Loop
+let stepsPerFrame = 3;
+function loop() {
+  for (let i = 0; i < stepsPerFrame; i++) simulate();
+  render();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
